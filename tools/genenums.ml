@@ -1,4 +1,6 @@
-(* extract interesting enums from 'clang-c/Index.h' and write types for them *)
+(* extract interesting enums from 'clang-c/Index.h' and write types for them.
+   This is used as an early bootstapping process as these enums are then
+   used in the library *)
 open Printf
 
 let enums_c = [
@@ -32,7 +34,7 @@ let enums_c = [
   "CXVisitorResult";
 ]
 
-(* these are typedef'd enums ... we'll need to be a bit more sofisticated to
+(* these are typedef'd enums ... we'll need to be a bit more sophisticated to
    reconstruct these *)
 let enums_t = [
   "CXGlobalOptFlags";
@@ -109,7 +111,7 @@ let skip_hacks =
       ]
     ]
 
-let write_enum name fields = 
+let write_enum_module name fields = 
   let fields = drop_field_prefix name fields in
   let skip n = List.mem (name,n) skip_hacks in
   printf "module %s = struct\n\n" name;
@@ -125,7 +127,32 @@ let write_enum name fields =
   printf "    | _ -> failwith \"%s.to_int\"\n\n" name;
   printf "  let of_int x = of_int64 (Int64.of_int x)\n\n";
   printf "  let to_int x = Int64.to_int (to_int64 x)\n\n";
+  printf "  let to_string = function\n";
+  List.iter (fun (n,v) -> printf "    | %s -> \"%s\"\n" n n) fields;
+  printf "\n";
   printf "end\n\n"
+
+let write_enum_signature name fields =
+  let fields = drop_field_prefix name fields in
+  printf "module %s : sig\n\n" name;
+  printf "  type t = \n";
+  List.iter (fun (n,v) -> printf "    | %s\n" n) fields;
+  printf "\n";
+  printf "  val to_int64 : t -> int64\n";
+  printf "  val of_int64 : int64 -> t\n";
+  printf "  val to_int : t -> int\n";
+  printf "  val of_int : int -> t\n";
+  printf "  val to_string : t -> string\n";
+  printf "\nend\n\n"
+
+let write_ml = ref false
+let write_mli = ref false
+let () = Arg.parse
+  [
+    "-ml", Arg.Set write_ml, "write .ml file to stdout";
+    "-mli", Arg.Set write_mli, "write .mli file to stdout";
+  ]
+  (fun _ -> ()) ""
 
 let _ = 
   let args = 
@@ -140,9 +167,10 @@ let _ =
   | Ok r ->
     List.iter 
       (function
-        | `enum(name, fields) when List.mem name enums_c -> write_enum name fields
+        | `enum(name, fields) when List.mem name enums_c -> begin
+            begin if !write_ml then write_enum_module name fields end;
+            begin if !write_mli then write_enum_signature name fields end
+        end
         | _ -> ())
       (List. rev r)
-
-
 

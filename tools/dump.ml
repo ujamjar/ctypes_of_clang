@@ -22,6 +22,5 @@ let () =
           printf "enum %s {\n" n;
           List.iter (fun (n,v) -> printf "  %s = %Li;\n" n v) f;
           printf "}\n\n") 
-      (List.rev r)
-
+      r
 

@@ -26,6 +26,13 @@ module CXErrorCode = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Success -> "Success"
+    | Failure -> "Failure"
+    | Crashed -> "Crashed"
+    | InvalidArguments -> "InvalidArguments"
+    | ASTReadError -> "ASTReadError"
+
 end
 
 module CXAvailabilityKind = struct
@@ -52,6 +59,12 @@ module CXAvailabilityKind = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | Available -> "Available"
+    | Deprecated -> "Deprecated"
+    | NotAvailable -> "NotAvailable"
+    | NotAccessible -> "NotAccessible"
 
 end
 
@@ -83,6 +96,13 @@ module CXDiagnosticSeverity = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Ignored -> "Ignored"
+    | Note -> "Note"
+    | Warning -> "Warning"
+    | Error -> "Error"
+    | Fatal -> "Fatal"
+
 end
 
 module CXLoadDiag_Error = struct
@@ -109,6 +129,12 @@ module CXLoadDiag_Error = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | None -> "None"
+    | Unknown -> "Unknown"
+    | CannotLoad -> "CannotLoad"
+    | InvalidFile -> "InvalidFile"
 
 end
 
@@ -142,6 +168,14 @@ module CXDiagnosticDisplayOptions = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | DisplaySourceLocation -> "DisplaySourceLocation"
+    | DisplayColumn -> "DisplayColumn"
+    | DisplaySourceRanges -> "DisplaySourceRanges"
+    | DisplayOption -> "DisplayOption"
+    | DisplayCategoryId -> "DisplayCategoryId"
+    | DisplayCategoryName -> "DisplayCategoryName"
 
 end
 
@@ -188,6 +222,18 @@ module CXTranslationUnit_Flags = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | None -> "None"
+    | DetailedPreprocessingRecord -> "DetailedPreprocessingRecord"
+    | Incomplete -> "Incomplete"
+    | PrecompiledPreamble -> "PrecompiledPreamble"
+    | CacheCompletionResults -> "CacheCompletionResults"
+    | ForSerialization -> "ForSerialization"
+    | CXXChainedPCH -> "CXXChainedPCH"
+    | SkipFunctionBodies -> "SkipFunctionBodies"
+    | IncludeBriefCommentsInCodeCompletion -> "IncludeBriefCommentsInCodeCompletion"
+    | CreatePreambleOnFirstParse -> "CreatePreambleOnFirstParse"
+
 end
 
 module CXSaveTranslationUnit_Flags = struct
@@ -205,6 +251,9 @@ module CXSaveTranslationUnit_Flags = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | None -> "None"
 
 end
 
@@ -232,6 +281,12 @@ module CXSaveError = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | None -> "None"
+    | Unknown -> "Unknown"
+    | TranslationErrors -> "TranslationErrors"
+    | InvalidTU -> "InvalidTU"
 
 end
 
@@ -292,15 +347,31 @@ module CXTUResourceUsageKind = struct
     | 12L -> PreprocessingRecord
     | 13L -> SourceManager_DataStructures
     | 14L -> Preprocessor_HeaderSearch
-    (*| 1L -> MEMORY_IN_BYTES_BEGIN
-    | 14L -> MEMORY_IN_BYTES_END
-    | 1L -> First
-    | 14L -> Last*)
     | _ -> failwith "CXTUResourceUsageKind.to_int"
 
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | AST -> "AST"
+    | Identifiers -> "Identifiers"
+    | Selectors -> "Selectors"
+    | GlobalCompletionResults -> "GlobalCompletionResults"
+    | SourceManagerContentCache -> "SourceManagerContentCache"
+    | AST_SideTables -> "AST_SideTables"
+    | SourceManager_Membuffer_Malloc -> "SourceManager_Membuffer_Malloc"
+    | SourceManager_Membuffer_MMap -> "SourceManager_Membuffer_MMap"
+    | ExternalASTSource_Membuffer_Malloc -> "ExternalASTSource_Membuffer_Malloc"
+    | ExternalASTSource_Membuffer_MMap -> "ExternalASTSource_Membuffer_MMap"
+    | Preprocessor -> "Preprocessor"
+    | PreprocessingRecord -> "PreprocessingRecord"
+    | SourceManager_DataStructures -> "SourceManager_DataStructures"
+    | Preprocessor_HeaderSearch -> "Preprocessor_HeaderSearch"
+    | MEMORY_IN_BYTES_BEGIN -> "MEMORY_IN_BYTES_BEGIN"
+    | MEMORY_IN_BYTES_END -> "MEMORY_IN_BYTES_END"
+    | First -> "First"
+    | Last -> "Last"
 
 end
 
@@ -768,9 +839,6 @@ module CXCursorKind = struct
     | 37L -> ObjCSynthesizeDecl
     | 38L -> ObjCDynamicDecl
     | 39L -> CXXAccessSpecifier
-    (*| 1L -> FirstDecl
-    | 39L -> LastDecl
-    | 40L -> FirstRef*)
     | 40L -> ObjCSuperClassRef
     | 41L -> ObjCProtocolRef
     | 42L -> ObjCClassRef
@@ -782,14 +850,10 @@ module CXCursorKind = struct
     | 48L -> LabelRef
     | 49L -> OverloadedDeclRef
     | 50L -> VariableRef
-    (*| 50L -> LastRef
-    | 70L -> FirstInvalid*)
     | 70L -> InvalidFile
     | 71L -> NoDeclFound
     | 72L -> NotImplemented
     | 73L -> InvalidCode
-    (*| 73L -> LastInvalid
-    | 100L -> FirstExpr*)
     | 100L -> UnexposedExpr
     | 101L -> DeclRefExpr
     | 102L -> MemberRefExpr
@@ -838,8 +902,6 @@ module CXCursorKind = struct
     | 145L -> ObjCBoolLiteralExpr
     | 146L -> ObjCSelfExpr
     | 147L -> OMPArraySectionExpr
-    (*| 147L -> LastExpr
-    | 200L -> FirstStmt*)
     | 200L -> UnexposedStmt
     | 201L -> LabelStmt
     | 202L -> CompoundStmt
@@ -855,7 +917,6 @@ module CXCursorKind = struct
     | 212L -> ContinueStmt
     | 213L -> BreakStmt
     | 214L -> ReturnStmt
-    (*| 215L -> GCCAsmStmt*)
     | 215L -> AsmStmt
     | 216L -> ObjCAtTryStmt
     | 217L -> ObjCAtCatchStmt
@@ -902,9 +963,7 @@ module CXCursorKind = struct
     | 258L -> OMPTaskLoopDirective
     | 259L -> OMPTaskLoopSimdDirective
     | 260L -> OMPDistributeDirective
-    (*| 260L -> LastStmt*)
     | 300L -> TranslationUnit
-    (*| 400L -> FirstAttr*)
     | 400L -> UnexposedAttr
     | 401L -> IBActionAttr
     | 402L -> IBOutletAttr
@@ -925,24 +984,229 @@ module CXCursorKind = struct
     | 417L -> VisibilityAttr
     | 418L -> DLLExport
     | 419L -> DLLImport
-    (*| 419L -> LastAttr*)
     | 500L -> PreprocessingDirective
     | 501L -> MacroDefinition
     | 502L -> MacroExpansion
-    (*| 502L -> MacroInstantiation*)
     | 503L -> InclusionDirective
-    (*| 500L -> FirstPreprocessing
-    | 503L -> LastPreprocessing*)
     | 600L -> ModuleImportDecl
     | 601L -> TypeAliasTemplateDecl
-    (*| 600L -> FirstExtraDecl
-    | 601L -> LastExtraDecl*)
     | 700L -> OverloadCandidate
     | _ -> failwith "CXCursorKind.to_int"
 
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | UnexposedDecl -> "UnexposedDecl"
+    | StructDecl -> "StructDecl"
+    | UnionDecl -> "UnionDecl"
+    | ClassDecl -> "ClassDecl"
+    | EnumDecl -> "EnumDecl"
+    | FieldDecl -> "FieldDecl"
+    | EnumConstantDecl -> "EnumConstantDecl"
+    | FunctionDecl -> "FunctionDecl"
+    | VarDecl -> "VarDecl"
+    | ParmDecl -> "ParmDecl"
+    | ObjCInterfaceDecl -> "ObjCInterfaceDecl"
+    | ObjCCategoryDecl -> "ObjCCategoryDecl"
+    | ObjCProtocolDecl -> "ObjCProtocolDecl"
+    | ObjCPropertyDecl -> "ObjCPropertyDecl"
+    | ObjCIvarDecl -> "ObjCIvarDecl"
+    | ObjCInstanceMethodDecl -> "ObjCInstanceMethodDecl"
+    | ObjCClassMethodDecl -> "ObjCClassMethodDecl"
+    | ObjCImplementationDecl -> "ObjCImplementationDecl"
+    | ObjCCategoryImplDecl -> "ObjCCategoryImplDecl"
+    | TypedefDecl -> "TypedefDecl"
+    | CXXMethod -> "CXXMethod"
+    | Namespace -> "Namespace"
+    | LinkageSpec -> "LinkageSpec"
+    | Constructor -> "Constructor"
+    | Destructor -> "Destructor"
+    | ConversionFunction -> "ConversionFunction"
+    | TemplateTypeParameter -> "TemplateTypeParameter"
+    | NonTypeTemplateParameter -> "NonTypeTemplateParameter"
+    | TemplateTemplateParameter -> "TemplateTemplateParameter"
+    | FunctionTemplate -> "FunctionTemplate"
+    | ClassTemplate -> "ClassTemplate"
+    | ClassTemplatePartialSpecialization -> "ClassTemplatePartialSpecialization"
+    | NamespaceAlias -> "NamespaceAlias"
+    | UsingDirective -> "UsingDirective"
+    | UsingDeclaration -> "UsingDeclaration"
+    | TypeAliasDecl -> "TypeAliasDecl"
+    | ObjCSynthesizeDecl -> "ObjCSynthesizeDecl"
+    | ObjCDynamicDecl -> "ObjCDynamicDecl"
+    | CXXAccessSpecifier -> "CXXAccessSpecifier"
+    | FirstDecl -> "FirstDecl"
+    | LastDecl -> "LastDecl"
+    | FirstRef -> "FirstRef"
+    | ObjCSuperClassRef -> "ObjCSuperClassRef"
+    | ObjCProtocolRef -> "ObjCProtocolRef"
+    | ObjCClassRef -> "ObjCClassRef"
+    | TypeRef -> "TypeRef"
+    | CXXBaseSpecifier -> "CXXBaseSpecifier"
+    | TemplateRef -> "TemplateRef"
+    | NamespaceRef -> "NamespaceRef"
+    | MemberRef -> "MemberRef"
+    | LabelRef -> "LabelRef"
+    | OverloadedDeclRef -> "OverloadedDeclRef"
+    | VariableRef -> "VariableRef"
+    | LastRef -> "LastRef"
+    | FirstInvalid -> "FirstInvalid"
+    | InvalidFile -> "InvalidFile"
+    | NoDeclFound -> "NoDeclFound"
+    | NotImplemented -> "NotImplemented"
+    | InvalidCode -> "InvalidCode"
+    | LastInvalid -> "LastInvalid"
+    | FirstExpr -> "FirstExpr"
+    | UnexposedExpr -> "UnexposedExpr"
+    | DeclRefExpr -> "DeclRefExpr"
+    | MemberRefExpr -> "MemberRefExpr"
+    | CallExpr -> "CallExpr"
+    | ObjCMessageExpr -> "ObjCMessageExpr"
+    | BlockExpr -> "BlockExpr"
+    | IntegerLiteral -> "IntegerLiteral"
+    | FloatingLiteral -> "FloatingLiteral"
+    | ImaginaryLiteral -> "ImaginaryLiteral"
+    | StringLiteral -> "StringLiteral"
+    | CharacterLiteral -> "CharacterLiteral"
+    | ParenExpr -> "ParenExpr"
+    | UnaryOperator -> "UnaryOperator"
+    | ArraySubscriptExpr -> "ArraySubscriptExpr"
+    | BinaryOperator -> "BinaryOperator"
+    | CompoundAssignOperator -> "CompoundAssignOperator"
+    | ConditionalOperator -> "ConditionalOperator"
+    | CStyleCastExpr -> "CStyleCastExpr"
+    | CompoundLiteralExpr -> "CompoundLiteralExpr"
+    | InitListExpr -> "InitListExpr"
+    | AddrLabelExpr -> "AddrLabelExpr"
+    | StmtExpr -> "StmtExpr"
+    | GenericSelectionExpr -> "GenericSelectionExpr"
+    | GNUNullExpr -> "GNUNullExpr"
+    | CXXStaticCastExpr -> "CXXStaticCastExpr"
+    | CXXDynamicCastExpr -> "CXXDynamicCastExpr"
+    | CXXReinterpretCastExpr -> "CXXReinterpretCastExpr"
+    | CXXConstCastExpr -> "CXXConstCastExpr"
+    | CXXFunctionalCastExpr -> "CXXFunctionalCastExpr"
+    | CXXTypeidExpr -> "CXXTypeidExpr"
+    | CXXBoolLiteralExpr -> "CXXBoolLiteralExpr"
+    | CXXNullPtrLiteralExpr -> "CXXNullPtrLiteralExpr"
+    | CXXThisExpr -> "CXXThisExpr"
+    | CXXThrowExpr -> "CXXThrowExpr"
+    | CXXNewExpr -> "CXXNewExpr"
+    | CXXDeleteExpr -> "CXXDeleteExpr"
+    | UnaryExpr -> "UnaryExpr"
+    | ObjCStringLiteral -> "ObjCStringLiteral"
+    | ObjCEncodeExpr -> "ObjCEncodeExpr"
+    | ObjCSelectorExpr -> "ObjCSelectorExpr"
+    | ObjCProtocolExpr -> "ObjCProtocolExpr"
+    | ObjCBridgedCastExpr -> "ObjCBridgedCastExpr"
+    | PackExpansionExpr -> "PackExpansionExpr"
+    | SizeOfPackExpr -> "SizeOfPackExpr"
+    | LambdaExpr -> "LambdaExpr"
+    | ObjCBoolLiteralExpr -> "ObjCBoolLiteralExpr"
+    | ObjCSelfExpr -> "ObjCSelfExpr"
+    | OMPArraySectionExpr -> "OMPArraySectionExpr"
+    | LastExpr -> "LastExpr"
+    | FirstStmt -> "FirstStmt"
+    | UnexposedStmt -> "UnexposedStmt"
+    | LabelStmt -> "LabelStmt"
+    | CompoundStmt -> "CompoundStmt"
+    | CaseStmt -> "CaseStmt"
+    | DefaultStmt -> "DefaultStmt"
+    | IfStmt -> "IfStmt"
+    | SwitchStmt -> "SwitchStmt"
+    | WhileStmt -> "WhileStmt"
+    | DoStmt -> "DoStmt"
+    | ForStmt -> "ForStmt"
+    | GotoStmt -> "GotoStmt"
+    | IndirectGotoStmt -> "IndirectGotoStmt"
+    | ContinueStmt -> "ContinueStmt"
+    | BreakStmt -> "BreakStmt"
+    | ReturnStmt -> "ReturnStmt"
+    | GCCAsmStmt -> "GCCAsmStmt"
+    | AsmStmt -> "AsmStmt"
+    | ObjCAtTryStmt -> "ObjCAtTryStmt"
+    | ObjCAtCatchStmt -> "ObjCAtCatchStmt"
+    | ObjCAtFinallyStmt -> "ObjCAtFinallyStmt"
+    | ObjCAtThrowStmt -> "ObjCAtThrowStmt"
+    | ObjCAtSynchronizedStmt -> "ObjCAtSynchronizedStmt"
+    | ObjCAutoreleasePoolStmt -> "ObjCAutoreleasePoolStmt"
+    | ObjCForCollectionStmt -> "ObjCForCollectionStmt"
+    | CXXCatchStmt -> "CXXCatchStmt"
+    | CXXTryStmt -> "CXXTryStmt"
+    | CXXForRangeStmt -> "CXXForRangeStmt"
+    | SEHTryStmt -> "SEHTryStmt"
+    | SEHExceptStmt -> "SEHExceptStmt"
+    | SEHFinallyStmt -> "SEHFinallyStmt"
+    | MSAsmStmt -> "MSAsmStmt"
+    | NullStmt -> "NullStmt"
+    | DeclStmt -> "DeclStmt"
+    | OMPParallelDirective -> "OMPParallelDirective"
+    | OMPSimdDirective -> "OMPSimdDirective"
+    | OMPForDirective -> "OMPForDirective"
+    | OMPSectionsDirective -> "OMPSectionsDirective"
+    | OMPSectionDirective -> "OMPSectionDirective"
+    | OMPSingleDirective -> "OMPSingleDirective"
+    | OMPParallelForDirective -> "OMPParallelForDirective"
+    | OMPParallelSectionsDirective -> "OMPParallelSectionsDirective"
+    | OMPTaskDirective -> "OMPTaskDirective"
+    | OMPMasterDirective -> "OMPMasterDirective"
+    | OMPCriticalDirective -> "OMPCriticalDirective"
+    | OMPTaskyieldDirective -> "OMPTaskyieldDirective"
+    | OMPBarrierDirective -> "OMPBarrierDirective"
+    | OMPTaskwaitDirective -> "OMPTaskwaitDirective"
+    | OMPFlushDirective -> "OMPFlushDirective"
+    | SEHLeaveStmt -> "SEHLeaveStmt"
+    | OMPOrderedDirective -> "OMPOrderedDirective"
+    | OMPAtomicDirective -> "OMPAtomicDirective"
+    | OMPForSimdDirective -> "OMPForSimdDirective"
+    | OMPParallelForSimdDirective -> "OMPParallelForSimdDirective"
+    | OMPTargetDirective -> "OMPTargetDirective"
+    | OMPTeamsDirective -> "OMPTeamsDirective"
+    | OMPTaskgroupDirective -> "OMPTaskgroupDirective"
+    | OMPCancellationPointDirective -> "OMPCancellationPointDirective"
+    | OMPCancelDirective -> "OMPCancelDirective"
+    | OMPTargetDataDirective -> "OMPTargetDataDirective"
+    | OMPTaskLoopDirective -> "OMPTaskLoopDirective"
+    | OMPTaskLoopSimdDirective -> "OMPTaskLoopSimdDirective"
+    | OMPDistributeDirective -> "OMPDistributeDirective"
+    | LastStmt -> "LastStmt"
+    | TranslationUnit -> "TranslationUnit"
+    | FirstAttr -> "FirstAttr"
+    | UnexposedAttr -> "UnexposedAttr"
+    | IBActionAttr -> "IBActionAttr"
+    | IBOutletAttr -> "IBOutletAttr"
+    | IBOutletCollectionAttr -> "IBOutletCollectionAttr"
+    | CXXFinalAttr -> "CXXFinalAttr"
+    | CXXOverrideAttr -> "CXXOverrideAttr"
+    | AnnotateAttr -> "AnnotateAttr"
+    | AsmLabelAttr -> "AsmLabelAttr"
+    | PackedAttr -> "PackedAttr"
+    | PureAttr -> "PureAttr"
+    | ConstAttr -> "ConstAttr"
+    | NoDuplicateAttr -> "NoDuplicateAttr"
+    | CUDAConstantAttr -> "CUDAConstantAttr"
+    | CUDADeviceAttr -> "CUDADeviceAttr"
+    | CUDAGlobalAttr -> "CUDAGlobalAttr"
+    | CUDAHostAttr -> "CUDAHostAttr"
+    | CUDASharedAttr -> "CUDASharedAttr"
+    | VisibilityAttr -> "VisibilityAttr"
+    | DLLExport -> "DLLExport"
+    | DLLImport -> "DLLImport"
+    | LastAttr -> "LastAttr"
+    | PreprocessingDirective -> "PreprocessingDirective"
+    | MacroDefinition -> "MacroDefinition"
+    | MacroExpansion -> "MacroExpansion"
+    | MacroInstantiation -> "MacroInstantiation"
+    | InclusionDirective -> "InclusionDirective"
+    | FirstPreprocessing -> "FirstPreprocessing"
+    | LastPreprocessing -> "LastPreprocessing"
+    | ModuleImportDecl -> "ModuleImportDecl"
+    | TypeAliasTemplateDecl -> "TypeAliasTemplateDecl"
+    | FirstExtraDecl -> "FirstExtraDecl"
+    | LastExtraDecl -> "LastExtraDecl"
+    | OverloadCandidate -> "OverloadCandidate"
 
 end
 
@@ -974,6 +1238,13 @@ module CXLinkageKind = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Invalid -> "Invalid"
+    | NoLinkage -> "NoLinkage"
+    | Internal -> "Internal"
+    | UniqueExternal -> "UniqueExternal"
+    | External -> "External"
+
 end
 
 module CXVisibilityKind = struct
@@ -1001,6 +1272,12 @@ module CXVisibilityKind = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Invalid -> "Invalid"
+    | Hidden -> "Hidden"
+    | Protected -> "Protected"
+    | Default -> "Default"
+
 end
 
 module CXLanguageKind = struct
@@ -1027,6 +1304,12 @@ module CXLanguageKind = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | Invalid -> "Invalid"
+    | C -> "C"
+    | ObjC -> "ObjC"
+    | CPlusPlus -> "CPlusPlus"
 
 end
 
@@ -1169,8 +1452,6 @@ module CXTypeKind = struct
     | 27L -> ObjCId
     | 28L -> ObjCClass
     | 29L -> ObjCSel
-    (*| 2L -> FirstBuiltin
-    | 29L -> LastBuiltin*)
     | 100L -> Complex
     | 101L -> Pointer
     | 102L -> BlockPointer
@@ -1195,6 +1476,59 @@ module CXTypeKind = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | Invalid -> "Invalid"
+    | Unexposed -> "Unexposed"
+    | Void -> "Void"
+    | Bool -> "Bool"
+    | Char_U -> "Char_U"
+    | UChar -> "UChar"
+    | Char16 -> "Char16"
+    | Char32 -> "Char32"
+    | UShort -> "UShort"
+    | UInt -> "UInt"
+    | ULong -> "ULong"
+    | ULongLong -> "ULongLong"
+    | UInt128 -> "UInt128"
+    | Char_S -> "Char_S"
+    | SChar -> "SChar"
+    | WChar -> "WChar"
+    | Short -> "Short"
+    | Int -> "Int"
+    | Long -> "Long"
+    | LongLong -> "LongLong"
+    | Int128 -> "Int128"
+    | Float -> "Float"
+    | Double -> "Double"
+    | LongDouble -> "LongDouble"
+    | NullPtr -> "NullPtr"
+    | Overload -> "Overload"
+    | Dependent -> "Dependent"
+    | ObjCId -> "ObjCId"
+    | ObjCClass -> "ObjCClass"
+    | ObjCSel -> "ObjCSel"
+    | FirstBuiltin -> "FirstBuiltin"
+    | LastBuiltin -> "LastBuiltin"
+    | Complex -> "Complex"
+    | Pointer -> "Pointer"
+    | BlockPointer -> "BlockPointer"
+    | LValueReference -> "LValueReference"
+    | RValueReference -> "RValueReference"
+    | Record -> "Record"
+    | Enum -> "Enum"
+    | Typedef -> "Typedef"
+    | ObjCInterface -> "ObjCInterface"
+    | ObjCObjectPointer -> "ObjCObjectPointer"
+    | FunctionNoProto -> "FunctionNoProto"
+    | FunctionProto -> "FunctionProto"
+    | ConstantArray -> "ConstantArray"
+    | Vector -> "Vector"
+    | IncompleteArray -> "IncompleteArray"
+    | VariableArray -> "VariableArray"
+    | DependentSizedArray -> "DependentSizedArray"
+    | MemberPointer -> "MemberPointer"
+    | Auto -> "Auto"
 
 end
 
@@ -1253,6 +1587,22 @@ module CXCallingConv = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Default -> "Default"
+    | C -> "C"
+    | X86StdCall -> "X86StdCall"
+    | X86FastCall -> "X86FastCall"
+    | X86ThisCall -> "X86ThisCall"
+    | X86Pascal -> "X86Pascal"
+    | AAPCS -> "AAPCS"
+    | AAPCS_VFP -> "AAPCS_VFP"
+    | IntelOclBicc -> "IntelOclBicc"
+    | X86_64Win64 -> "X86_64Win64"
+    | X86_64SysV -> "X86_64SysV"
+    | X86VectorCall -> "X86VectorCall"
+    | Invalid -> "Invalid"
+    | Unexposed -> "Unexposed"
+
 end
 
 module CXTemplateArgumentKind = struct
@@ -1298,6 +1648,18 @@ module CXTemplateArgumentKind = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Null -> "Null"
+    | Type -> "Type"
+    | Declaration -> "Declaration"
+    | NullPtr -> "NullPtr"
+    | Integral -> "Integral"
+    | Template -> "Template"
+    | TemplateExpansion -> "TemplateExpansion"
+    | Expression -> "Expression"
+    | Pack -> "Pack"
+    | Invalid -> "Invalid"
+
 end
 
 module CXTypeLayoutError = struct
@@ -1328,6 +1690,13 @@ module CXTypeLayoutError = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Invalid -> "Invalid"
+    | Incomplete -> "Incomplete"
+    | Dependent -> "Dependent"
+    | NotConstantSize -> "NotConstantSize"
+    | InvalidFieldName -> "InvalidFieldName"
+
 end
 
 module CX_CXXAccessSpecifier = struct
@@ -1354,6 +1723,12 @@ module CX_CXXAccessSpecifier = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | InvalidAccessSpecifier -> "InvalidAccessSpecifier"
+    | Public -> "Public"
+    | Protected -> "Protected"
+    | Private -> "Private"
 
 end
 
@@ -1394,6 +1769,16 @@ module CX_StorageClass = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | C_Invalid -> "C_Invalid"
+    | C_None -> "C_None"
+    | C_Extern -> "C_Extern"
+    | C_Static -> "C_Static"
+    | C_PrivateExtern -> "C_PrivateExtern"
+    | C_OpenCLWorkGroupLocal -> "C_OpenCLWorkGroupLocal"
+    | C_Auto -> "C_Auto"
+    | C_Register -> "C_Register"
+
 end
 
 module CXChildVisitResult = struct
@@ -1418,6 +1803,11 @@ module CXChildVisitResult = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Break -> "Break"
+    | Continue -> "Continue"
+    | Recurse -> "Recurse"
+
 end
 
 module CXNameRefFlags = struct
@@ -1441,6 +1831,11 @@ module CXNameRefFlags = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | CXNameRange_WantQualifier -> "CXNameRange_WantQualifier"
+    | CXNameRange_WantTemplateArgs -> "CXNameRange_WantTemplateArgs"
+    | CXNameRange_WantSinglePiece -> "CXNameRange_WantSinglePiece"
 
 end
 
@@ -1471,6 +1866,13 @@ module CXTokenKind = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | Punctuation -> "Punctuation"
+    | Keyword -> "Keyword"
+    | Identifier -> "Identifier"
+    | Literal -> "Literal"
+    | Comment -> "Comment"
 
 end
 
@@ -1550,6 +1952,29 @@ module CXCompletionChunkKind = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Optional -> "Optional"
+    | TypedText -> "TypedText"
+    | Text -> "Text"
+    | Placeholder -> "Placeholder"
+    | Informative -> "Informative"
+    | CurrentParameter -> "CurrentParameter"
+    | LeftParen -> "LeftParen"
+    | RightParen -> "RightParen"
+    | LeftBracket -> "LeftBracket"
+    | RightBracket -> "RightBracket"
+    | LeftBrace -> "LeftBrace"
+    | RightBrace -> "RightBrace"
+    | LeftAngle -> "LeftAngle"
+    | RightAngle -> "RightAngle"
+    | Comma -> "Comma"
+    | ResultType -> "ResultType"
+    | Colon -> "Colon"
+    | SemiColon -> "SemiColon"
+    | Equal -> "Equal"
+    | HorizontalSpace -> "HorizontalSpace"
+    | VerticalSpace -> "VerticalSpace"
+
 end
 
 module CXCodeComplete_Flags = struct
@@ -1573,6 +1998,11 @@ module CXCodeComplete_Flags = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | IncludeMacros -> "IncludeMacros"
+    | IncludeCodePatterns -> "IncludeCodePatterns"
+    | IncludeBriefComments -> "IncludeBriefComments"
 
 end
 
@@ -1661,6 +2091,32 @@ module CXCompletionContext = struct
 
   let to_int x = Int64.to_int (to_int64 x)
 
+  let to_string = function
+    | Unexposed -> "Unexposed"
+    | AnyType -> "AnyType"
+    | AnyValue -> "AnyValue"
+    | ObjCObjectValue -> "ObjCObjectValue"
+    | ObjCSelectorValue -> "ObjCSelectorValue"
+    | CXXClassTypeValue -> "CXXClassTypeValue"
+    | DotMemberAccess -> "DotMemberAccess"
+    | ArrowMemberAccess -> "ArrowMemberAccess"
+    | ObjCPropertyAccess -> "ObjCPropertyAccess"
+    | EnumTag -> "EnumTag"
+    | UnionTag -> "UnionTag"
+    | StructTag -> "StructTag"
+    | ClassTag -> "ClassTag"
+    | Namespace -> "Namespace"
+    | NestedNameSpecifier -> "NestedNameSpecifier"
+    | ObjCInterface -> "ObjCInterface"
+    | ObjCProtocol -> "ObjCProtocol"
+    | ObjCCategory -> "ObjCCategory"
+    | ObjCInstanceMessage -> "ObjCInstanceMessage"
+    | ObjCClassMessage -> "ObjCClassMessage"
+    | ObjCSelectorName -> "ObjCSelectorName"
+    | MacroName -> "MacroName"
+    | NaturalLanguage -> "NaturalLanguage"
+    | Unknown -> "Unknown"
+
 end
 
 module CXVisitorResult = struct
@@ -1681,6 +2137,10 @@ module CXVisitorResult = struct
   let of_int x = of_int64 (Int64.of_int x)
 
   let to_int x = Int64.to_int (to_int64 x)
+
+  let to_string = function
+    | Break -> "Break"
+    | Continue -> "Continue"
 
 end
 

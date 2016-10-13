@@ -20,4 +20,18 @@ typedef enum coo {
   x,y,z
 } doo;
 
+enum _qoo {
+  AA = 'a',
+  BB = 'c'
+};
 
+enum _poo {
+  AAA = -7,
+  BBB = 8
+};
+
+enum {
+  ARGH, GROO
+};
+
+struct y;

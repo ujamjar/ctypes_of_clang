@@ -51,6 +51,21 @@ module File = struct
     Str.to_string << name
 end
 
+type unsaved'
+type unsaved = unsaved' structure
+let unsaved : unsaved typ = structure "CXUnsavedFile"
+let unsaved_filename = field unsaved "Filename" string
+let unsaved_contents = field unsaved "Contents" string
+let unsaved_length = field unsaved "Length" ulong
+let () = seal unsaved
+
+module Unsaved = struct
+  let set ~unsaved ~filename ~contents = 
+    setf unsaved unsaved_filename filename;
+    setf unsaved unsaved_contents contents;
+    setf unsaved unsaved_length (Unsigned.ULong.of_int (String.length contents))
+end
+
 type loc'
 type loc = loc' structure
 let loc : loc typ = structure "CXSourceLocation"
@@ -147,6 +162,14 @@ end
 
 module Cursor = struct
   
+  let equal = 
+    let eq = foreign "clang_equalCursors" (cursor @-> cursor @-> returning unsigned) in
+    (fun a b -> if (U.to_int (eq a b)) = 0 then false else true)
+  
+  let is_null = 
+    let is_null = foreign "clang_Cursor_isNull" (cursor @-> returning int) in
+    is_null >> ((<>)0)
+
   let spelling = 
     let spelling = foreign "clang_getCursorSpelling" (cursor @-> returning str) in
     Str.to_string << spelling 

@@ -1,6 +1,8 @@
 open Ctypes
 open Enums
 
+(** {2 CXString} *)
+
 type str
 val str : str typ
 
@@ -10,6 +12,8 @@ module Str : sig
   val to_string : ?dispose:bool -> str -> string
 end
 
+(** {2 CXIndex} *)
+
 type idx
 val idx : idx typ
 
@@ -18,6 +22,8 @@ module Index : sig
   val dispose : idx -> unit
 end
 
+(** {2 CXFile} *)
+
 type file
 val file : file typ
 
@@ -25,12 +31,25 @@ module File : sig
   val name : file -> string
 end
 
+(** {2 CXUnsavedFile} *)
+
+type unsaved
+val unsaved : unsaved typ
+
+module Unsaved : sig
+  val set : unsaved:unsaved -> filename:string -> contents:string -> unit
+end
+
+(** {2 CXLocation} *)
+
 type loc
 val loc : loc typ
 
 module Loc : sig
   val location : loc -> (file * int * int * int)
 end
+
+(** {2 CXType} *)
 
 type ctyp
 val ctyp : ctyp typ
@@ -56,7 +75,11 @@ module Type : sig
   val calling_conv : ctyp -> CXCallingConv.t
 end
 
+(** {2 CXCursor} *)
+
 module Cursor : sig
+  val equal : cursor -> cursor -> bool
+  val is_null : cursor -> bool
   val spelling : cursor -> string
   val kind : cursor -> CXCursorKind.t
   val location : cursor -> loc
@@ -74,6 +97,8 @@ module Cursor : sig
   val visit : cursor -> (cursor -> cursor -> 'a -> CXChildVisitResult.t * 'a) -> 'a -> 'a
 end
 
+(** {2 CXTranslationUnitImpl} *)
+
 type tu
 val tu : tu typ
 
@@ -82,6 +107,8 @@ module TU : sig
   val cursor : tu -> cursor
   val dispose : tu -> unit
 end
+
+(** {2 CXDiagnostic} *)
 
 type diag
 val diag : diag typ
