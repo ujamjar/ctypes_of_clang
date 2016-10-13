@@ -1,0 +1,6 @@
+"csrc": -traverse
+"src": include
+"tools": include
+
+<{src,tools}/*.{ml,mli,cmi,cmo,byte}>: package(ctypes), package(ctypes.foreign), clang
+
