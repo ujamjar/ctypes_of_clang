@@ -1,301 +1,438 @@
-open Ctypes
-open Foreign
-open Enums
-
-module U = Unsigned.UInt
-let unsigned = uint
-type pvoid = unit ptr 
-module Kind = struct
-  let t = unsigned
+module type Dllib = sig
+  val from : Dl.library option
 end
 
-let (<<) f g x = f (g x)
-let (>>) f g x = g (f x)
+module type S = sig
 
-type str'
-type str = str' structure
-let str : str typ = structure "CXString"
-let str_data = field str "data" (ptr void)
-let str_private_flags = field str "private_flags" unsigned
-let () = seal str
+  open Ctypes
+  open Enums
 
-module Str = struct
+  (** {2 CXString} *)
 
-  let getC = foreign "clang_getCString" (str @-> returning @@ string)
-  let dispose' = foreign "clang_disposeString" (str @-> returning void)
+  type str
+  val str : str typ
 
-  let to_string ?(dispose=true) s = 
-    let c = getC s in
-    (if dispose then dispose' s);
-    c
+  module Str : sig
+    val getC : str -> string
+    val dispose : str -> unit
+    val to_string : ?dispose:bool -> str -> string
+  end
 
-  let dispose = dispose'
+  (** {2 CXIndex} *)
 
-end
+  type idx
+  val idx : idx typ
 
-type idx = pvoid
-let idx = ptr void
+  module Index : sig
+    val create : int -> int -> idx
+    val dispose : idx -> unit
+  end
 
-module Index = struct
-  let create = foreign "clang_createIndex" (int @-> int @-> returning idx)
-  let dispose = foreign "clang_disposeIndex" (idx @-> returning void)
+  (** {2 CXFile} *)
 
-end
+  type file
+  val file : file typ
 
-type file = pvoid
-let file = ptr void 
+  module File : sig
+    val name : file -> string
+  end
 
-module File = struct
-  let name = 
-    let name = foreign "clang_getFileName" (file @-> returning str) in
-    Str.to_string << name
-end
+  (** {2 CXUnsavedFile} *)
 
-type unsaved'
-type unsaved = unsaved' structure
-let unsaved : unsaved typ = structure "CXUnsavedFile"
-let unsaved_filename = field unsaved "Filename" string
-let unsaved_contents = field unsaved "Contents" string
-let unsaved_length = field unsaved "Length" ulong
-let () = seal unsaved
+  type unsaved
+  val unsaved : unsaved typ
 
-module Unsaved = struct
-  let set ~unsaved ~filename ~contents = 
-    setf unsaved unsaved_filename filename;
-    setf unsaved unsaved_contents contents;
-    setf unsaved unsaved_length (Unsigned.ULong.of_int (String.length contents))
-end
+  module Unsaved : sig
+    val set : unsaved:unsaved -> filename:string -> contents:string -> unit
+  end
 
-type loc'
-type loc = loc' structure
-let loc : loc typ = structure "CXSourceLocation"
-let loc_ptr_data = Array.init 2 (fun i -> field loc ("ptr_data"^string_of_int i) (ptr void))
-let loc_int_data = field loc "int_data" unsigned
-let () = seal loc
+  (** {2 CXLocation} *)
 
-module Loc = struct
+  type loc
+  val loc : loc typ
 
-  let location = 
-    let loc = foreign "clang_getSpellingLocation"
-      (loc @-> ptr file @-> ptr unsigned @-> ptr unsigned @-> ptr unsigned @-> returning void)
-    in
-    fun s -> 
-      let fp = allocate file null in
-      let line = allocate unsigned U.zero in
-      let col = allocate unsigned U.zero in
-      let ofs = allocate unsigned U.zero in
-      let () = loc s fp line col ofs in
-      !@ fp, U.to_int (!@ line), U.to_int (!@ col), U.to_int (!@ ofs)
+  module Loc : sig
+    val location : loc -> (file * int * int * int)
+  end
 
-end
+  (** {2 CXType} *)
 
-type ctyp'
-type ctyp = ctyp' structure
-let ctyp : ctyp typ = structure "CXType"
-let ctyp_kind = field ctyp "kind" Kind.t
-let ctyp_data = Array.init 2 (fun i -> field ctyp ("data" ^ string_of_int i) (ptr void))
-let () = seal ctyp
+  type ctyp
+  val ctyp : ctyp typ
+  type cursor
+  val cursor : cursor typ
 
-type cursor'
-type cursor = cursor' structure
-let cursor : cursor typ = structure "CXCursor"
-let cursor_kind = field cursor "kind" Kind.t
-let cursor_xdata = field cursor "xdata" int
-let cursor_data = Array.init 3 (fun i -> field cursor ("data" ^ string_of_int i) (ptr void))
-let () = seal cursor
+  module Type : sig
+    val name : ctyp -> string
+    val kind : ctyp -> CXTypeKind.t
+    val kind_name : CXTypeKind.t -> string
+    val declaration : ctyp -> cursor
+    val is_const : ctyp -> bool
+    val size : ctyp -> int64
+    val align : ctyp -> int64
+    val pointee_type : ctyp -> ctyp
+    val elem_type : ctyp -> ctyp
+    val array_size : ctyp -> int64
+    val canonical_type : ctyp -> ctyp
+    val is_variadic : ctyp -> bool
+    val num_args : ctyp -> int
+    val arg_types : ctyp -> ctyp array
+    val ret_type : ctyp -> ctyp
+    val calling_conv : ctyp -> CXCallingConv.t
+  end
 
-module Type = struct
+  (** {2 CXCursor} *)
 
-  let name = 
-    let spelling = foreign "clang_getTypeSpelling" (ctyp @-> returning str) in
-    (Str.to_string << spelling)
+  module Cursor : sig
+    val equal : cursor -> cursor -> bool
+    val is_null : cursor -> bool
+    val spelling : cursor -> string
+    val kind : cursor -> CXCursorKind.t
+    val location : cursor -> loc
+    val cur_type : cursor -> ctyp
+    val definition : cursor -> cursor
+    val canonical : cursor -> cursor
+    val bit_width : cursor -> int option
+    val enum_type : cursor -> ctyp
+    val enum_val : cursor -> int64
+    val typedef_type : cursor -> ctyp
+    val linkage : cursor -> CXLinkageKind.t
+    val num_args : cursor -> int
+    val ret_type : cursor -> ctyp
+    val args : cursor -> cursor array
+    val visit : cursor -> (cursor -> cursor -> 'a -> CXChildVisitResult.t * 'a) -> 'a -> 'a
+  end
 
-  let kind s = getf s ctyp_kind |> (CXTypeKind.of_int64 << U.to_int64)
+  (** {2 CXTranslationUnitImpl} *)
 
-  let kind_name = 
-    let name = foreign "clang_getTypeKindSpelling" (Kind.t @-> returning str) in
-    Str.to_string << name << U.of_int64 << CXTypeKind.to_int64
+  type tu
+  val tu : tu typ
 
-  let declaration = foreign "clang_getTypeDeclaration" (ctyp @-> returning cursor)
+  module TU : sig
+    val parse : ?options:CXTranslationUnit_Flags.t list -> index:idx -> string list -> tu
+    val cursor : tu -> cursor
+    val dispose : tu -> unit
+  end
 
-  let c2ll n = 
-    let f = foreign "clang_Type_getSizeOf" (ctyp @-> returning llong) in
-    f >> Signed.LLong.to_int64 
+  (** {2 CXDiagnostic} *)
 
-  let min0 x = if x < 0L then 0L else x
+  type diag
+  val diag : diag typ
 
-  let c2c n = foreign n (ctyp @-> returning ctyp)
+  module Diag : sig
+    val num : tu -> int
+    val get : tu -> int -> diag
+    val to_string : diag -> string
+    val diags : tu -> string array
+  end
 
-  let c2b n = 
-    let f = foreign n (ctyp @-> returning unsigned) in
-    (fun t -> if U.to_int (f t) = 0 then false else true)
-
-  let is_const = c2b "clang_isConstQualifiedType" 
-
-  let size = c2ll "clang_Type_getSizeOf" >> min0
-
-  let align = c2ll "clang_Type_getAlignOf" >> min0
-
-  let pointee_type = c2c "clang_getPointeeType" 
-
-  let elem_type = c2c "clang_getArrayElementType"
-
-  let array_size = c2ll "clang_getArraySize"
-
-  let canonical_type = c2c "clang_getCanonicalType"
-
-  let is_variadic = c2b "clang_isFunctionTypeVariadic"
-
-  let num_args = foreign "clang_getNumArgTypes" (ctyp @-> returning int)
-
-  let arg_types = 
-    let get = foreign "clang_getArgType" (ctyp @-> int @-> returning ctyp) in
-    (fun t -> Array.init (num_args t) (get t))
-
-  let ret_type = c2c "clang_getResultType"
-
-  let calling_conv = 
-    let cc = foreign "clang_getFunctionTypeCallingConv" (ctyp @-> returning unsigned) in
-    cc >> U.to_int64 >> CXCallingConv.of_int64
+  val run : ?options:CXTranslationUnit_Flags.t list -> string list -> (tu -> 'a -> 'b) -> 'a -> 
+    ('b, string array) result
 
 end
 
-module Cursor = struct
-  
-  let equal = 
-    let eq = foreign "clang_equalCursors" (cursor @-> cursor @-> returning unsigned) in
-    (fun a b -> if (U.to_int (eq a b)) = 0 then false else true)
-  
-  let is_null = 
-    let is_null = foreign "clang_Cursor_isNull" (cursor @-> returning int) in
-    is_null >> ((<>)0)
+module Make(X : Dllib) = struct
 
-  let spelling = 
-    let spelling = foreign "clang_getCursorSpelling" (cursor @-> returning str) in
-    Str.to_string << spelling 
+  open Ctypes
+  open Foreign
+  open Enums
 
-  let kind = 
-    let kind = foreign "clang_getCursorKind" (cursor @-> returning unsigned) in
-    CXCursorKind.of_int64 << U.to_int64 << kind
+  let foreign = foreign ?from:X.from
 
-  let location = foreign "clang_getCursorLocation" (cursor @-> returning loc)
+  module U = Unsigned.UInt
+  let unsigned = uint
+  type pvoid = unit ptr 
+  module Kind = struct
+    let t = unsigned
+  end
 
-  let cur_type = foreign "clang_getCursorType" (cursor @-> returning ctyp) 
+  let (<<) f g x = f (g x)
+  let (>>) f g x = g (f x)
 
-  let definition = foreign "clang_getCursorDefinition" (cursor @-> returning cursor) 
+  type str'
+  type str = str' structure
+  let str : str typ = structure "CXString"
+  let str_data = field str "data" (ptr void)
+  let str_private_flags = field str "private_flags" unsigned
+  let () = seal str
 
-  let canonical = foreign "clang_getCanonicalCursor" (cursor @-> returning cursor) 
+  module Str = struct
 
-  let bit_width c = 
-    let f = foreign "clang_getFieldDeclBitWidth" (cursor @-> returning int) in
-    match f c with
-    | -1 -> None
-    | x -> Some(x)
+    let getC = foreign "clang_getCString" (str @-> returning @@ string)
+    let dispose' = foreign "clang_disposeString" (str @-> returning void)
 
-  let enum_type = foreign "clang_getEnumDeclIntegerType" (cursor @-> returning ctyp)
+    let to_string ?(dispose=true) s = 
+      let c = getC s in
+      (if dispose then dispose' s);
+      c
 
-  let enum_val = 
-    let f = foreign "clang_getEnumConstantDeclValue" (cursor @-> returning llong) in
-    Signed.LLong.to_int64 << f
+    let dispose = dispose'
 
-  let typedef_type = foreign "clang_getTypedefDeclUnderlyingType" (cursor @-> returning ctyp)
+  end
 
-  let linkage = 
-    let f = foreign "clang_getCursorLinkage" (cursor @-> returning Kind.t) in
-    CXLinkageKind.of_int64 << U.to_int64 << f
+  type idx = pvoid
+  let idx = ptr void
 
-  let num_args = foreign "clang_Cursor_getNumArguments" (cursor @-> returning int)
+  module Index = struct
+    let create = foreign "clang_createIndex" (int @-> int @-> returning idx)
+    let dispose = foreign "clang_disposeIndex" (idx @-> returning void)
 
-  let ret_type = foreign "clang_getCursorResultType" (cursor @-> returning ctyp)
+  end
 
-  let get_arg = foreign "clang_Cursor_getArgument" (cursor @-> int @-> returning cursor)
+  type file = pvoid
+  let file = ptr void 
 
-  let args c = Array.init (num_args c) (fun i -> get_arg c i)
+  module File = struct
+    let name = 
+      let name = foreign "clang_getFileName" (file @-> returning str) in
+      Str.to_string << name
+  end
 
-  let callback = cursor @-> cursor @-> ptr void @-> returning Kind.t
-  let visit_kids = foreign "clang_visitChildren"
-    (cursor @-> funptr callback @-> ptr void @-> returning unsigned)
+  type unsaved'
+  type unsaved = unsaved' structure
+  let unsaved : unsaved typ = structure "CXUnsavedFile"
+  let unsaved_filename = field unsaved "Filename" string
+  let unsaved_contents = field unsaved "Contents" string
+  let unsaved_length = field unsaved "Length" ulong
+  let () = seal unsaved
 
-  let visit cursor f arg = 
-    let data = ref arg in
-    let wrap_visitor f data = 
-      (fun cursor parent _ -> 
-         let r, d = f cursor parent !data in
-         data := d;
-         CXChildVisitResult.to_int r |> U.of_int)
-    in
-    let _ = visit_kids cursor (wrap_visitor f data) null in
-    !data
+  module Unsaved = struct
+    let set ~unsaved ~filename ~contents = 
+      setf unsaved unsaved_filename filename;
+      setf unsaved unsaved_contents contents;
+      setf unsaved unsaved_length (Unsigned.ULong.of_int (String.length contents))
+  end
+
+  type loc'
+  type loc = loc' structure
+  let loc : loc typ = structure "CXSourceLocation"
+  let loc_ptr_data = Array.init 2 (fun i -> field loc ("ptr_data"^string_of_int i) (ptr void))
+  let loc_int_data = field loc "int_data" unsigned
+  let () = seal loc
+
+  module Loc = struct
+
+    let location = 
+      let loc = foreign "clang_getSpellingLocation"
+        (loc @-> ptr file @-> ptr unsigned @-> ptr unsigned @-> ptr unsigned @-> returning void)
+      in
+      fun s -> 
+        let fp = allocate file null in
+        let line = allocate unsigned U.zero in
+        let col = allocate unsigned U.zero in
+        let ofs = allocate unsigned U.zero in
+        let () = loc s fp line col ofs in
+        !@ fp, U.to_int (!@ line), U.to_int (!@ col), U.to_int (!@ ofs)
+
+  end
+
+  type ctyp'
+  type ctyp = ctyp' structure
+  let ctyp : ctyp typ = structure "CXType"
+  let ctyp_kind = field ctyp "kind" Kind.t
+  let ctyp_data = Array.init 2 (fun i -> field ctyp ("data" ^ string_of_int i) (ptr void))
+  let () = seal ctyp
+
+  type cursor'
+  type cursor = cursor' structure
+  let cursor : cursor typ = structure "CXCursor"
+  let cursor_kind = field cursor "kind" Kind.t
+  let cursor_xdata = field cursor "xdata" int
+  let cursor_data = Array.init 3 (fun i -> field cursor ("data" ^ string_of_int i) (ptr void))
+  let () = seal cursor
+
+  module Type = struct
+
+    let name = 
+      let spelling = foreign "clang_getTypeSpelling" (ctyp @-> returning str) in
+      (Str.to_string << spelling)
+
+    let kind s = getf s ctyp_kind |> (CXTypeKind.of_int64 << U.to_int64)
+
+    let kind_name = 
+      let name = foreign "clang_getTypeKindSpelling" (Kind.t @-> returning str) in
+      Str.to_string << name << U.of_int64 << CXTypeKind.to_int64
+
+    let declaration = foreign "clang_getTypeDeclaration" (ctyp @-> returning cursor)
+
+    let c2ll n = 
+      let f = foreign "clang_Type_getSizeOf" (ctyp @-> returning llong) in
+      f >> Signed.LLong.to_int64 
+
+    let min0 x = if x < 0L then 0L else x
+
+    let c2c n = foreign n (ctyp @-> returning ctyp)
+
+    let c2b n = 
+      let f = foreign n (ctyp @-> returning unsigned) in
+      (fun t -> if U.to_int (f t) = 0 then false else true)
+
+    let is_const = c2b "clang_isConstQualifiedType" 
+
+    let size = c2ll "clang_Type_getSizeOf" >> min0
+
+    let align = c2ll "clang_Type_getAlignOf" >> min0
+
+    let pointee_type = c2c "clang_getPointeeType" 
+
+    let elem_type = c2c "clang_getArrayElementType"
+
+    let array_size = c2ll "clang_getArraySize"
+
+    let canonical_type = c2c "clang_getCanonicalType"
+
+    let is_variadic = c2b "clang_isFunctionTypeVariadic"
+
+    let num_args = foreign "clang_getNumArgTypes" (ctyp @-> returning int)
+
+    let arg_types = 
+      let get = foreign "clang_getArgType" (ctyp @-> int @-> returning ctyp) in
+      (fun t -> Array.init (num_args t) (get t))
+
+    let ret_type = c2c "clang_getResultType"
+
+    let calling_conv = 
+      let cc = foreign "clang_getFunctionTypeCallingConv" (ctyp @-> returning unsigned) in
+      cc >> U.to_int64 >> CXCallingConv.of_int64
+
+  end
+
+  module Cursor = struct
+    
+    let equal = 
+      let eq = foreign "clang_equalCursors" (cursor @-> cursor @-> returning unsigned) in
+      (fun a b -> if (U.to_int (eq a b)) = 0 then false else true)
+    
+    let is_null = 
+      let is_null = foreign "clang_Cursor_isNull" (cursor @-> returning int) in
+      is_null >> ((<>)0)
+
+    let spelling = 
+      let spelling = foreign "clang_getCursorSpelling" (cursor @-> returning str) in
+      Str.to_string << spelling 
+
+    let kind = 
+      let kind = foreign "clang_getCursorKind" (cursor @-> returning unsigned) in
+      CXCursorKind.of_int64 << U.to_int64 << kind
+
+    let location = foreign "clang_getCursorLocation" (cursor @-> returning loc)
+
+    let cur_type = foreign "clang_getCursorType" (cursor @-> returning ctyp) 
+
+    let definition = foreign "clang_getCursorDefinition" (cursor @-> returning cursor) 
+
+    let canonical = foreign "clang_getCanonicalCursor" (cursor @-> returning cursor) 
+
+    let bit_width c = 
+      let f = foreign "clang_getFieldDeclBitWidth" (cursor @-> returning int) in
+      match f c with
+      | -1 -> None
+      | x -> Some(x)
+
+    let enum_type = foreign "clang_getEnumDeclIntegerType" (cursor @-> returning ctyp)
+
+    let enum_val = 
+      let f = foreign "clang_getEnumConstantDeclValue" (cursor @-> returning llong) in
+      Signed.LLong.to_int64 << f
+
+    let typedef_type = foreign "clang_getTypedefDeclUnderlyingType" (cursor @-> returning ctyp)
+
+    let linkage = 
+      let f = foreign "clang_getCursorLinkage" (cursor @-> returning Kind.t) in
+      CXLinkageKind.of_int64 << U.to_int64 << f
+
+    let num_args = foreign "clang_Cursor_getNumArguments" (cursor @-> returning int)
+
+    let ret_type = foreign "clang_getCursorResultType" (cursor @-> returning ctyp)
+
+    let get_arg = foreign "clang_Cursor_getArgument" (cursor @-> int @-> returning cursor)
+
+    let args c = Array.init (num_args c) (fun i -> get_arg c i)
+
+    let callback = cursor @-> cursor @-> ptr void @-> returning Kind.t
+    let visit_kids = foreign "clang_visitChildren"
+      (cursor @-> funptr callback @-> ptr void @-> returning unsigned)
+
+    let visit cursor f arg = 
+      let data = ref arg in
+      let wrap_visitor f data = 
+        (fun cursor parent _ -> 
+           let r, d = f cursor parent !data in
+           data := d;
+           CXChildVisitResult.to_int r |> U.of_int)
+      in
+      let _ = visit_kids cursor (wrap_visitor f data) null in
+      !data
+
+  end
+
+  type tu'
+  type tu = tu' structure ptr
+  let tu : tu typ = ptr (structure "CXTranslationUnitImpl")
+
+  module TU = struct
+
+    let parse' = foreign "clang_parseTranslationUnit"
+        (idx @-> 
+         string_opt @-> (* filename *)
+         ptr string @-> (* command line args *)
+         int @-> (* numb command line args *)
+         ptr void @-> (* unsaved_files *)
+         int @-> (* num unsaved files *)
+         int @-> (* CXTranslationUnit_Flags *)
+         returning tu)
+
+    let parse ?(options=[CXTranslationUnit_Flags.None]) ~index args = 
+      let options = List.fold_left (fun flags flag ->
+          CXTranslationUnit_Flags.to_int flag lor flags) 0 options
+      in
+      parse' 
+        index None
+        (CArray.start (CArray.of_list string args))
+        (List.length args)
+        null
+        0
+        options
+
+    let cursor = foreign "clang_getTranslationUnitCursor" (tu @-> returning cursor)
+
+    let dispose = foreign "clang_disposeTranslationUnit" (tu @-> returning void)
+
+  end
+
+  type diag = pvoid
+  let diag = ptr void
+
+  module Diag = struct
+    
+    let num = U.to_int << foreign "clang_getNumDiagnostics" (tu @-> returning unsigned)
+    
+    let get = 
+      let get = foreign "clang_getDiagnostic" (tu @-> unsigned @-> returning diag) in
+      (fun tu i -> get tu (U.of_int i))
+    
+    let to_string =
+      let default = foreign "clang_defaultDiagnosticDisplayOptions"
+        (void @-> returning unsigned) ()
+      in
+      let fmt = foreign "clang_formatDiagnostic" (diag @-> unsigned @-> returning str) in
+      (fun diag -> fmt diag default |> Str.to_string)
+
+    let diags tu = Array.init (num tu) (to_string << get tu)
+
+  end
+
+  let run ?options args f arg = 
+    let index = Index.create 0 0 in
+    let tu = TU.parse ?options ~index args in
+    if Diag.num tu <> 0 then begin
+      let diags = Diag.diags tu in
+      TU.dispose tu;
+      Error diags
+    end else
+      let result = f tu arg in
+      TU.dispose tu;
+      Index.dispose index;
+      Ok result
 
 end
-
-type tu'
-type tu = tu' structure ptr
-let tu : tu typ = ptr (structure "CXTranslationUnitImpl")
-
-module TU = struct
-
-  let parse' = foreign "clang_parseTranslationUnit"
-      (idx @-> 
-       string_opt @-> (* filename *)
-       ptr string @-> (* command line args *)
-       int @-> (* numb command line args *)
-       ptr void @-> (* unsaved_files *)
-       int @-> (* num unsaved files *)
-       int @-> (* CXTranslationUnit_Flags *)
-       returning tu)
-
-  let parse ?(options=[CXTranslationUnit_Flags.None]) ~index args = 
-    let options = List.fold_left (fun flags flag ->
-        CXTranslationUnit_Flags.to_int flag lor flags) 0 options
-    in
-    parse' 
-      index None
-      (CArray.start (CArray.of_list string args))
-      (List.length args)
-      null
-      0
-      options
-
-  let cursor = foreign "clang_getTranslationUnitCursor" (tu @-> returning cursor)
-
-  let dispose = foreign "clang_disposeTranslationUnit" (tu @-> returning void)
-
-end
-
-type diag = pvoid
-let diag = ptr void
-
-module Diag = struct
-  
-  let num = U.to_int << foreign "clang_getNumDiagnostics" (tu @-> returning unsigned)
-  
-  let get = 
-    let get = foreign "clang_getDiagnostic" (tu @-> unsigned @-> returning diag) in
-    (fun tu i -> get tu (U.of_int i))
-  
-  let to_string =
-    let default = foreign "clang_defaultDiagnosticDisplayOptions"
-      (void @-> returning unsigned) ()
-    in
-    let fmt = foreign "clang_formatDiagnostic" (diag @-> unsigned @-> returning str) in
-    (fun diag -> fmt diag default |> Str.to_string)
-
-  let diags tu = Array.init (num tu) (to_string << get tu)
-
-end
-
-let run ?options args f arg = 
-  let index = Index.create 0 0 in
-  let tu = TU.parse ?options ~index args in
-  if Diag.num tu <> 0 then begin
-    let diags = Diag.diags tu in
-    TU.dispose tu;
-    Error diags
-  end else
-    let result = f tu arg in
-    TU.dispose tu;
-    Index.dispose index;
-    Ok result
-
-

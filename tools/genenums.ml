@@ -3,6 +3,9 @@
    used in the library *)
 open Printf
 
+module Clang = Clang.Make(struct let from = None end)
+module Cparse = Cparse.Info(Clang)
+
 let enums_c = [
   "CXAvailabilityKind";
   "CXDiagnosticSeverity";
@@ -162,12 +165,12 @@ let _ =
       "/usr/lib/llvm-3.8/include/clang-c/Index.h"
     ]
   in
-  match Parse.Simple.run args with
+  match Cparse.run args with
   | Error e -> Array.iter print_endline e
   | Ok r ->
     List.iter 
       (function
-        | `enum(name, fields) when List.mem name enums_c -> begin
+        | Cparse.Enum{name; fields} when List.mem name enums_c -> begin
             begin if !write_ml then write_enum_module name fields end;
             begin if !write_mli then write_enum_signature name fields end
         end

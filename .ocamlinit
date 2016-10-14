@@ -1,0 +1,11 @@
+#use "topfind";;
+#directory "_build/src";;
+#require "humane_re,ppx_deriving.runtime,ctypes.foreign";;
+#load "ctypes_of_clang.cma";;
+
+module Clang = Clang.Make(struct
+  let from = Some Dl.(dlopen ~filename:"/usr/lib/llvm-3.8/lib/libclang.so" ~flags:[RTLD_NOW])
+end)
+module Info = Cparse.Info(Clang)
+module Extract = Cparse.Extract(Clang)
+

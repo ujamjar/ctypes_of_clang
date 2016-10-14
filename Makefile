@@ -2,7 +2,7 @@
 all: tools
 
 tools: 
-	ocamlbuild ctypes_of_clang.cma genenums.byte dump.byte dumpx.byte
+	ocamlbuild ctypes_of_clang.cma genenums.byte info.byte extract.byte
 
 clean:
 	ocamlbuild -clean

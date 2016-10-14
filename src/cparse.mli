@@ -1,30 +1,8 @@
-open Enums
-open Clang
 
-module Simple : sig
+module Info(Clang : Clang.S) : sig
 
-  type t = [ `enum of string * (string * int64) list
-           | `func of string * string * string list
-           | `union of string * (string * string) list
-           | `struc of string * (string * string) list
-           | `typedef of string * string ]
-
-  val func_cb : cursor -> cursor -> 
-    string list -> CXChildVisitResult.t * string list
-
-  val struct_cb : cursor -> cursor -> 
-    (string * string) list -> CXChildVisitResult.t * (string * string) list
-  
-  val enum_cb : cursor -> cursor -> 
-    (string * int64) list -> CXChildVisitResult.t * (string * int64) list
-  
-  val visit_cb : cursor -> cursor -> t list -> CXChildVisitResult.t * t list
-
-  val run : string list -> (t list, string array) result
-
-end
-
-module LessSimple : sig
+  open Enums
+  open Clang
 
   type enum_field = string * int64
 
@@ -51,6 +29,8 @@ module LessSimple : sig
       {
         loc : loc;
         name : string; 
+        returns : string;
+        args : string list;
         kindname : string;
         typename : string;
       }
@@ -59,6 +39,7 @@ module LessSimple : sig
       {
         loc : loc;
         name : string; 
+        fields : (string * string) list;
         kindname : string;
         typename : string;
       }
@@ -67,6 +48,7 @@ module LessSimple : sig
       {
         loc : loc;
         name : string; 
+        fields : (string * string) list;
         kindname : string;
         typename : string;
       }
@@ -75,6 +57,7 @@ module LessSimple : sig
       {
         loc : loc;
         name : string; 
+        aliases : string;
         kindname : string;
         typename : string;
       }
@@ -82,6 +65,17 @@ module LessSimple : sig
   val visit_cb : cursor -> cursor -> t list -> CXChildVisitResult.t * t list
 
   val run : string list -> (t list, string array) result
+
+end
+
+module Extract(Clang : Clang.S) : sig
+  open Enums
+  open Clang
+
+  val visit_cb : cursor -> cursor -> unit Extract.Stage1.M.t -> 
+    CXChildVisitResult.t * unit Extract.Stage1.M.t 
+
+  val run : string list -> (unit Extract.Stage1.M.t, string array) result
 
 end
 
