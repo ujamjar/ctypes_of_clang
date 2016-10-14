@@ -106,7 +106,7 @@ let make_module_name filename =
   match Humane_re.Str.(split (regexp "\\.")) filename with
     [] -> assert false
   | base :: _ -> String.capitalize_ascii base
-
+(*
 let main ~regex ~ast ~types_file ~functions_file =
   let foreign_regex = Humane_re.Str.regexp regex in
   match types_file with None -> failwith "types file not specified" | Some types_file ->
@@ -141,4 +141,42 @@ let main ~regex ~ast ~types_file ~functions_file =
             Format.fprintf types_fmt types_epilogue;
         end
       | `Failure s -> failwith s
+*)
+let re_any = Humane_re.Str.regexp ".*"
+
+let run ?(regex=".*") ast = 
+  let foreign_regex = Humane_re.Str.regexp regex in
+  match Stage1.M.run ast Stage1.initial_state with
+    `Result ((), (namespace : Stage1.M.state)) ->
+    let map_name_state = function
+      | Builtin -> Stage2.Declared
+      | Aliases _ -> Stage2.Undeclared
+      | Unsupported _ -> Stage2.Undeclarable in
+    let transform_state = let open Assoc in function
+      | UItem (Name_ n, s, ()) -> UItem (Name_ n, s, map_name_state s)
+      | UItem (k, v, ()) -> UItem (k, v, Stage2.Undeclared) in
+    let initial_cache_state = Stage2.{
+        stritems = []; fstritems = [];
+        namespace = List.map transform_state namespace.Stage1.statics } in
+    let m = Stage2.(M.(List.fold_left (fun m (name, typ) ->
+        if Humane_re.Str.matches foreign_regex name then
+          (m >> record_foreign name typ) else m) (return ())
+        namespace.Stage1.foreigns)) in
+    begin match Stage2.M.run m initial_cache_state with
+    | `Result ((),x) -> Ok x
+    | `Failure x -> Error [|x|] end
+  | `Failure s -> failwith s
+
+let write_types types_fmt {Stage2.stritems; fstritems} = 
+  Format.fprintf types_fmt types_prologue;
+  List.iter (Print.stritem types_fmt) (List.rev stritems);
+  Format.fprintf types_fmt types_epilogue;
+  Ok ()
+
+let write_functions functions_fmt {Stage2.stritems; fstritems} =
+  let types_module = "FOO" in
+  Format.fprintf functions_fmt functions_prologue types_module;
+  List.iter (Print.link_time functions_fmt) (List.rev fstritems);
+  Format.fprintf functions_fmt functions_epilogue;
+  Ok ()
 

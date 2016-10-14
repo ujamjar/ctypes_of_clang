@@ -1,6 +1,6 @@
 #use "topfind";;
 #directory "_build/src";;
-#require "humane_re,ppx_deriving.runtime,ctypes.foreign";;
+#require "rresult,humane_re,ppx_deriving.runtime,ctypes.foreign";;
 #load "ctypes_of_clang.cma";;
 
 module Clang = Clang.Make(struct
@@ -9,3 +9,4 @@ end)
 module Info = Cparse.Info(Clang)
 module Extract = Cparse.Extract(Clang)
 
+open Rresult.R
