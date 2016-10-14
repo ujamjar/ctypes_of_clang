@@ -144,8 +144,8 @@ module Info(Clang : Clang.S) = struct
   | _ ->
     Continue, data
 
-  let run args = 
-    rev_ok @@ run args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) []
+  let run ?unsaved args = 
+    rev_ok @@ run ?unsaved ~args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) []
 
 end
 
@@ -181,8 +181,8 @@ module Extract(Clang : Clang.S) = struct
   | _ ->
     Continue, m
 
-  let run args = 
-    run args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) 
+  let run ?unsaved args = 
+    run ?unsaved ~args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) 
       (Extract.Stage1.M.return ())
 
 end

@@ -44,6 +44,7 @@ module type S = sig
 
   module Unsaved : sig
     val set : unsaved:unsaved -> filename:string -> contents:string -> unit
+    val make : filename:string -> contents:string -> unsaved
   end
 
   (** {2 CXLocation} *)
@@ -109,7 +110,10 @@ module type S = sig
   val tu : tu typ
 
   module TU : sig
-    val parse : ?options:CXTranslationUnit_Flags.t list -> index:idx -> string list -> tu
+    val parse : 
+      ?options:CXTranslationUnit_Flags.t list -> 
+      unsaved:(string * string) list -> 
+      index:idx -> string list -> tu
     val cursor : tu -> cursor
     val dispose : tu -> unit
   end
@@ -126,7 +130,11 @@ module type S = sig
     val diags : tu -> string array
   end
 
-  val run : ?options:CXTranslationUnit_Flags.t list -> string list -> (tu -> 'a -> 'b) -> 'a -> 
+  val run : 
+    ?options:CXTranslationUnit_Flags.t list -> 
+    ?unsaved:(string * string) list ->
+    args:string list -> 
+    (tu -> 'a -> 'b) -> 'a -> 
     ('b, string array) result
 
 end
@@ -201,6 +209,10 @@ module Make(X : Dllib) = struct
       setf unsaved unsaved_filename filename;
       setf unsaved unsaved_contents contents;
       setf unsaved unsaved_length (Unsigned.ULong.of_int (String.length contents))
+    let make ~filename ~contents = 
+      let unsaved = make unsaved in
+      set ~unsaved ~filename ~contents;
+      unsaved
   end
 
   type loc'
@@ -376,22 +388,31 @@ module Make(X : Dllib) = struct
         (idx @-> 
          string_opt @-> (* filename *)
          ptr string @-> (* command line args *)
-         int @-> (* numb command line args *)
+         int @-> (* num command line args *)
          ptr void @-> (* unsaved_files *)
          int @-> (* num unsaved files *)
          int @-> (* CXTranslationUnit_Flags *)
          returning tu)
 
-    let parse ?(options=[CXTranslationUnit_Flags.None]) ~index args = 
+    let u' = unsaved
+    let parse ?(options=[CXTranslationUnit_Flags.None]) ~unsaved ~index args = 
       let options = List.fold_left (fun flags flag ->
           CXTranslationUnit_Flags.to_int flag lor flags) 0 options
+      in
+      let unsaved, num_unsaved = 
+        if unsaved = [] then null, 0
+        else
+          let u = 
+            List.map (fun (filename,contents) -> Unsaved.make ~filename ~contents) unsaved
+          in
+          CArray.(to_voidp @@ start @@ of_list u' @@ u), List.length u
       in
       parse' 
         index None
         (CArray.start (CArray.of_list string args))
         (List.length args)
-        null
-        0
+        unsaved
+        num_unsaved
         options
 
     let cursor = foreign "clang_getTranslationUnitCursor" (tu @-> returning cursor)
@@ -422,9 +443,9 @@ module Make(X : Dllib) = struct
 
   end
 
-  let run ?options args f arg = 
+  let run ?options ?(unsaved=[]) ~args f arg = 
     let index = Index.create 0 0 in
-    let tu = TU.parse ?options ~index args in
+    let tu = TU.parse ?options ~unsaved ~index args in
     if Diag.num tu <> 0 then begin
       let diags = Diag.diags tu in
       TU.dispose tu;
@@ -436,3 +457,4 @@ module Make(X : Dllib) = struct
       Ok result
 
 end
+

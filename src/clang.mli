@@ -44,6 +44,7 @@ module type S = sig
 
   module Unsaved : sig
     val set : unsaved:unsaved -> filename:string -> contents:string -> unit
+    val make : filename:string -> contents:string -> unsaved
   end
 
   (** {2 CXLocation} *)
@@ -109,7 +110,10 @@ module type S = sig
   val tu : tu typ
 
   module TU : sig
-    val parse : ?options:CXTranslationUnit_Flags.t list -> index:idx -> string list -> tu
+    val parse : 
+      ?options:CXTranslationUnit_Flags.t list -> 
+      unsaved:(string * string) list -> 
+      index:idx -> string list -> tu
     val cursor : tu -> cursor
     val dispose : tu -> unit
   end
@@ -126,7 +130,11 @@ module type S = sig
     val diags : tu -> string array
   end
 
-  val run : ?options:CXTranslationUnit_Flags.t list -> string list -> (tu -> 'a -> 'b) -> 'a -> 
+  val run : 
+    ?options:CXTranslationUnit_Flags.t list -> 
+    ?unsaved:(string * string) list ->
+    args:string list -> 
+    (tu -> 'a -> 'b) -> 'a -> 
     ('b, string array) result
 
 end

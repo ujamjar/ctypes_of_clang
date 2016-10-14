@@ -64,7 +64,7 @@ module Info(Clang : Clang.S) : sig
 
   val visit_cb : cursor -> cursor -> t list -> CXChildVisitResult.t * t list
 
-  val run : string list -> (t list, string array) result
+  val run : ?unsaved:(string*string) list -> string list -> (t list, string array) result
 
 end
 
@@ -75,7 +75,8 @@ module Extract(Clang : Clang.S) : sig
   val visit_cb : cursor -> cursor -> unit Extract.Stage1.M.t -> 
     CXChildVisitResult.t * unit Extract.Stage1.M.t 
 
-  val run : string list -> (unit Extract.Stage1.M.t, string array) result
+  val run : ?unsaved:(string*string) list -> string list -> 
+    (unit Extract.Stage1.M.t, string array) result
 
 end
 
