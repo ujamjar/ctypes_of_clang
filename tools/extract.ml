@@ -1,15 +1,16 @@
 open Printf
+open Rresult.R
 
-module Clang = Clang.Make(struct let from = None end)
-module Cparse = Cparse.Make(Clang)
-open Cparse.LessSimple
+module Clang = Coc_clang.Make(struct let from = None end)
+module Cparse = Coc_parse.Extract(Clang)
   
-let types_file = Some "types.ml.gen" 
-let functions_file = Some "fns.ml.gen"
+let x = 
+  let args = List.tl @@ Array.to_list Sys.argv in
+  Cparse.run args >>= Coc_gen.run >>= fun ast ->
+  Coc_gen.write_functions Format.std_formatter ast >>= fun () ->
+  Coc_gen.write_functions Format.std_formatter ast 
 
 let () = 
-  let args = List.tl @@ Array.to_list Sys.argv in
-  match Cparse.Monad.run args with
-  | Error e -> Array.iter print_endline e
-  | Ok ast ->
-    Extract.main ~regex:".*" ~ast ~types_file ~functions_file
+  match x with
+  | Error x -> Array.iter (printf "%s\n") x
+  | _ -> ()

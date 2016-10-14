@@ -1,10 +1,10 @@
-open Enums
+open Coc_enums
 
 let rev_ok = function
   | Ok l -> Ok (List.rev l)
   | Error e -> Error e
 
-module Info(Clang : Clang.S) = struct
+module Info(Clang : Coc_clang.S) = struct
   open Clang
 
   type enum_field = string * int64
@@ -22,7 +22,7 @@ module Info(Clang : Clang.S) = struct
       { 
         loc : loc;
         name : string; 
-        int_type : Ctyping.builtin_int_type option; 
+        int_type : Coc_typing.builtin_int_type option; 
         fields : enum_field list;
         kindname : string;
         typename : string;
@@ -136,7 +136,7 @@ module Info(Clang : Clang.S) = struct
     | EnumDecl ->
       let name = Cursor.spelling cursor in
       let loc = get_loc cursor in
-      let int_type = Ctyping.get_builtin_int_type @@ Type.kind @@ Cursor.enum_type cursor in
+      let int_type = Coc_typing.get_builtin_int_type @@ Type.kind @@ Cursor.enum_type cursor in
       let fields = List.rev @@ Cursor.visit cursor enum_cb [] in
       let typename = Type.name @@ Cursor.cur_type cursor in
       Continue, Enum{loc;name;int_type;fields;kindname;typename} :: data
@@ -149,7 +149,7 @@ module Info(Clang : Clang.S) = struct
 
 end
 
-module Extract(Clang : Clang.S) = struct
+module Extract(Clang : Coc_clang.S) = struct
   open Clang
 
   open CXChildVisitResult
@@ -172,7 +172,7 @@ module Extract(Clang : Clang.S) = struct
       (*let int_type = Ctyping.get_builtin_int_type @@ Type.kind @@ Cursor.enum_type cursor in*)
       let fields = List.rev @@ Cursor.visit cursor enum_cb [] in
       let m = 
-        let open Extract in let open Stage1.M in let open Stage1 in
+        let open Coc_extract in let open Stage1.M in let open Stage1 in
         m >> record_enum_tag name >>
         record_enum_items name (List.map fst fields)
       in
@@ -183,7 +183,7 @@ module Extract(Clang : Clang.S) = struct
 
   let run ?unsaved args = 
     run ?unsaved ~args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) 
-      (Extract.Stage1.M.return ())
+      (Coc_extract.Stage1.M.return ())
 
 end
 

@@ -3,8 +3,8 @@
    used in the library *)
 open Printf
 
-module Clang = Clang.Make(struct let from = None end)
-module Cparse = Cparse.Info(Clang)
+module Clang = Coc_clang.Make(struct let from = None end)
+module Cparse = Coc_parse.Info(Clang)
 
 let enums_c = [
   "CXAvailabilityKind";

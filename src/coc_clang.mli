@@ -5,7 +5,7 @@ end
 module type S = sig
 
   open Ctypes
-  open Enums
+  open Coc_enums
 
   (** {2 CXString} *)
 

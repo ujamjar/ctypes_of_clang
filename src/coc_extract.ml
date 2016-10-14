@@ -7,11 +7,8 @@ type (_, _) eql = Refl : ('a, 'a) eql
 (** fromMaybe *)
 let default_to default = function Some s -> s | None -> default
 
-(** A monad with state and exceptions.  Raising an exception rolls back
-    state changes. *)
-module Make(X: sig type state end) :
-sig
-  type state = X.state
+module type Monad = sig
+  type state 
   type _ t
 
   (* Sequencing *)
@@ -28,8 +25,11 @@ sig
   val handle : 'a t -> catch:([`Failure of string] -> 'a t) -> 'a t
 
   val run : 'a t -> state -> [ `Result of 'a * state | `Failure of string ]
-end =
-struct
+end
+
+(** A monad with state and exceptions.  Raising an exception rolls back
+    state changes. *)
+module Make(X: sig type state end) = (struct
   type state = X.state
   type error = [ `Failure of string ]
   type 'a t = state -> [ `Result of 'a * state | error ]
@@ -51,7 +51,7 @@ struct
   let failf fmt = Printf.kprintf (fun s -> fun _ -> `Failure s) fmt
 
   let run f = f
-end
+end : Monad with type state = X.state)
 
 (** Types describing the output. *)
 type struct_tag = [`Struct | `Union] * string

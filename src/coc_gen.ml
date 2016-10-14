@@ -1,4 +1,4 @@
-open Extract
+open Coc_extract
 
 let with_open_out filename f =
   let fd = open_out filename in

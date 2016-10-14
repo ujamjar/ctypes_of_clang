@@ -1,8 +1,11 @@
-.PHONY: tools clean all
-all: tools
+.PHONY: tools clean all lib
+all: lib tools 
+
+lib:
+	ocamlbuild ctypes_of_clang.cma
 
 tools: 
-	ocamlbuild ctypes_of_clang.cma genenums.byte info.byte extract.byte
+	ocamlbuild genenums.byte info.byte extract.byte
 
 clean:
 	ocamlbuild -clean

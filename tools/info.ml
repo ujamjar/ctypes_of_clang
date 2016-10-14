@@ -1,7 +1,7 @@
 open Printf
 
-module Clang = Clang.Make(struct let from = None end)
-module Cparse = Cparse.Info(Clang)
+module Clang = Coc_clang.Make(struct let from = None end)
+module Cparse = Coc_parse.Info(Clang)
 open Cparse
 
 let () = 
@@ -21,7 +21,7 @@ let () =
         show "enum" loc name kindname typename;
         printf "  type: %s\n" 
           (match int_type with None -> "?"
-                             | Some(x) -> Ctyping.show_builtin_int_type x);
+                             | Some(x) -> Coc_typing.show_builtin_int_type x);
         List.iter (fun (n,v) -> printf "  %s = %Li\n" n v) fields
       | Struct{loc;name;fields;kindname;typename} -> 
         show "struct" loc name kindname typename;

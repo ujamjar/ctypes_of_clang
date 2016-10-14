@@ -1,4 +1,4 @@
-open Enums
+open Coc_enums
 
 type builtin_int_type = 
   | Char_U 

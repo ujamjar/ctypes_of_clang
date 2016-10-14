@@ -1,7 +1,7 @@
 
-module Info(Clang : Clang.S) : sig
+module Info(Clang : Coc_clang.S) : sig
 
-  open Enums
+  open Coc_enums
   open Clang
 
   type enum_field = string * int64
@@ -19,7 +19,7 @@ module Info(Clang : Clang.S) : sig
       { 
         loc : loc;
         name : string; 
-        int_type : Ctyping.builtin_int_type option; 
+        int_type : Coc_typing.builtin_int_type option; 
         fields : enum_field list;
         kindname : string;
         typename : string;
@@ -68,15 +68,15 @@ module Info(Clang : Clang.S) : sig
 
 end
 
-module Extract(Clang : Clang.S) : sig
-  open Enums
+module Extract(Clang : Coc_clang.S) : sig
+  open Coc_enums
   open Clang
 
-  val visit_cb : cursor -> cursor -> unit Extract.Stage1.M.t -> 
-    CXChildVisitResult.t * unit Extract.Stage1.M.t 
+  val visit_cb : cursor -> cursor -> unit Coc_extract.Stage1.M.t -> 
+    CXChildVisitResult.t * unit Coc_extract.Stage1.M.t 
 
   val run : ?unsaved:(string*string) list -> string list -> 
-    (unit Extract.Stage1.M.t, string array) result
+    (unit Coc_extract.Stage1.M.t, string array) result
 
 end
 

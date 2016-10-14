@@ -1,6 +1,6 @@
-Enums
-Ctyping
-Clang
-Cparse
-Extract
-Cgen
+Coc_enums
+Coc_typing
+Coc_clang
+Coc_parse
+Coc_extract
+Coc_gen
