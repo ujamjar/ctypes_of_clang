@@ -1,35 +1,22 @@
 open Coc_enums
 
-type builtin_int_type = 
-  | Char_U 
-  | UChar 
-  | Char16 
-  | Char32 
-  | UShort 
-  | UInt 
-  | ULong 
-  | ULongLong 
-  | Char_S 
-  | SChar 
-  | WChar 
-  | Short 
-  | Int 
-  | Long 
-  | LongLong 
-  [@@deriving show]
+type struct_tag = [`Struct | `Union] * string
 
-type builtin_float_type = 
-  | Float 
-  | Double 
-  [@@deriving show]
+type typexpr =
+  | Array of typexpr * int
+  | Unsupported of string
+  | Enum of string
+  | Function of typexpr list * typexpr
+  | Funptr of typexpr list * typexpr
+  | Name of string
+  | Pointer of typexpr
+  | Structured of struct_tag
 
-type builtin_type = 
-  | B_Void
-  | B_Int of builtin_int_type
-  | B_Float of builtin_float_type
-  [@@deriving show]
+val string_of_typexpr : typexpr -> string
 
-val get_builtin_int_type : CXTypeKind.t -> builtin_int_type option
-val get_builtin_float_type : CXTypeKind.t -> builtin_float_type option
-val get_builtin_type : CXTypeKind.t -> builtin_type option
+module Make(Clang : Coc_clang.S) : sig
+
+  val conv_ty : Clang.ctyp -> typexpr
+
+end
 

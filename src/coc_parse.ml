@@ -6,6 +6,7 @@ let rev_ok = function
 
 module Info(Clang : Coc_clang.S) = struct
   open Clang
+  module T = Coc_typing.Make(Clang)
 
   type enum_field = string * int64
   
@@ -22,7 +23,7 @@ module Info(Clang : Coc_clang.S) = struct
       { 
         loc : loc;
         name : string; 
-        int_type : Coc_typing.builtin_int_type option; 
+        int_type : string; 
         fields : enum_field list;
         kindname : string;
         typename : string;
@@ -136,7 +137,7 @@ module Info(Clang : Coc_clang.S) = struct
     | EnumDecl ->
       let name = Cursor.spelling cursor in
       let loc = get_loc cursor in
-      let int_type = Coc_typing.get_builtin_int_type @@ Type.kind @@ Cursor.enum_type cursor in
+      let int_type = Type.name @@ Cursor.enum_type cursor in
       let fields = List.rev @@ Cursor.visit cursor enum_cb [] in
       let typename = Type.name @@ Cursor.cur_type cursor in
       Continue, Enum{loc;name;int_type;fields;kindname;typename} :: data
@@ -155,6 +156,8 @@ module Extract(Clang : Coc_clang.S) = struct
   open CXChildVisitResult
   open CXCursorKind
 
+  module T = Coc_typing.Make(Clang)
+
   let enum_cb cursor parent data = 
     match Cursor.kind cursor with
     | EnumConstantDecl -> 
@@ -164,20 +167,79 @@ module Extract(Clang : Coc_clang.S) = struct
     | _ -> 
       Continue, data
 
-  let visit_cb cursor parent m = 
+  let func_cb cursor parent data = 
     match Cursor.kind cursor with
+      | ParmDecl ->
+        let typ = T.conv_ty @@ Cursor.cur_type cursor in
+        Continue, (typ :: data)
+      | _ ->
+        Continue, data
+
+  let struct_cb cursor parent data = 
+    match Cursor.kind cursor with
+    | FieldDecl ->
+      let name = Cursor.spelling cursor in
+      let typ = T.conv_ty @@ Cursor.cur_type cursor in
+      Continue, ((name,typ)::data)
+    | _ ->
+      Continue, data
+
+  let visit_cb cursor parent m = 
+    let open Coc_extract in let open Stage1.M in let open Stage1 in
+
+    match Cursor.kind cursor with
+
+    | TypedefDecl ->
+      let name = Cursor.spelling cursor in
+      let aliases = Cursor.typedef_type cursor in
+      let m = 
+        m >> 
+        record_typedef name (T.conv_ty aliases) 
+      in
+      Continue, m
 
     | EnumDecl ->
       let name = Cursor.spelling cursor in
       (*let int_type = Ctyping.get_builtin_int_type @@ Type.kind @@ Cursor.enum_type cursor in*)
       let fields = List.rev @@ Cursor.visit cursor enum_cb [] in
       let m = 
-        let open Coc_extract in let open Stage1.M in let open Stage1 in
-        m >> record_enum_tag name >>
+        m >>
+        record_enum_tag name >>
         record_enum_items name (List.map fst fields)
       in
       Continue, m
 
+    | StructDecl ->
+      let name = Cursor.spelling cursor in
+      let fields = List.rev @@ Cursor.visit cursor struct_cb [] in
+      let m = 
+        m >>
+        record_struct_tag (`Struct, name) >>
+        add_struct_fields (`Struct, name) fields
+      in
+      Continue, m
+
+    | UnionDecl ->
+      let name = Cursor.spelling cursor in
+      let fields = List.rev @@ Cursor.visit cursor struct_cb [] in
+      let m = 
+        m >>
+        record_struct_tag (`Union, name) >>
+        add_struct_fields (`Union, name) fields
+      in
+      Continue, m
+
+    | FunctionDecl ->
+      let name = Cursor.spelling cursor in
+      let cur_type = Cursor.cur_type cursor in
+      let returns = T.conv_ty @@ Type.ret_type cur_type in
+      let args = List.rev @@ Cursor.visit cursor func_cb [] in
+      let m = 
+        m >> 
+        record_foreign name (Coc_typing.Function(args, returns))
+      in
+      Continue, m
+    
   | _ ->
     Continue, m
 

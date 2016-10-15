@@ -16,12 +16,10 @@ let () =
       | Function{loc;name;returns;args;kindname;typename} -> 
         show "function" loc name kindname typename;
         printf "  returns: %s\n" returns;
-        printf "  args: (%s)" (String.concat ", " args)
+        printf "  args: (%s)\n" (String.concat ", " args)
       | Enum{loc;name;int_type;fields;kindname;typename} -> 
         show "enum" loc name kindname typename;
-        printf "  type: %s\n" 
-          (match int_type with None -> "?"
-                             | Some(x) -> Coc_typing.show_builtin_int_type x);
+        printf "  type: %s\n" int_type;
         List.iter (fun (n,v) -> printf "  %s = %Li\n" n v) fields
       | Struct{loc;name;fields;kindname;typename} -> 
         show "struct" loc name kindname typename;

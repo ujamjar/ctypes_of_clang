@@ -1,3 +1,5 @@
+open Coc_typing
+
 type (_, _) eql = Refl : ('a, 'a) eql
 
 val default_to : 'a -> 'a option -> 'a
@@ -24,26 +26,15 @@ end
 
 module Make(X : sig type state end) : Monad with type state = X.state
 
-type struct_tag = [ `Struct | `Union ] * string
-
-type typexpr =
-    Array of typexpr * int
-  | Unsupported of string
-  | Enum of string
-  | Function of typexpr list * typexpr
-  | Funptr of typexpr list * typexpr
-  | Name of string
-  | Pointer of typexpr
-  | Structured of struct_tag
-
 type static_stritem =
     Enum of string * string list option
   | Structured of struct_tag
   | Typedef of string * typexpr
-  | Field of [ `Tag of string | `Typedef of string ] * (string * typexpr)
+  | Field of [`Tag of string | `Typedef of string] * (string * typexpr)
   | Seal of string
 
-type foreign_stritem = Foreign of string * typexpr
+type foreign_stritem =
+    Foreign of string * typexpr
 
 type enum = { etypedef : string option; eitems : string list; }
 

@@ -3,10 +3,10 @@
 #require "rresult,humane_re,ppx_deriving.runtime,ctypes.foreign";;
 #load "ctypes_of_clang.cma";;
 
-module Clang = Clang.Make(struct
+module Clang = Coc_clang.Make(struct
   let from = Some Dl.(dlopen ~filename:"/usr/lib/llvm-3.8/lib/libclang.so" ~flags:[RTLD_NOW])
 end)
-module Info = Cparse.Info(Clang)
-module Extract = Cparse.Extract(Clang)
+module Info = Coc_parse.Info(Clang)
+module Extract = Coc_parse.Extract(Clang)
 
 open Rresult.R

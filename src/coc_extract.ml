@@ -1,3 +1,4 @@
+open Coc_typing
 
 (* Type definitions *)
 
@@ -52,19 +53,6 @@ module Make(X: sig type state end) = (struct
 
   let run f = f
 end : Monad with type state = X.state)
-
-(** Types describing the output. *)
-type struct_tag = [`Struct | `Union] * string
-
-type typexpr =
-    Array of typexpr * int
-  | Unsupported of string
-  | Enum of string
-  | Function of typexpr list * typexpr
-  | Funptr of typexpr list * typexpr
-  | Name of string
-  | Pointer of typexpr
-  | Structured of struct_tag
 
 type static_stritem =
     Enum of string * string list option
@@ -167,7 +155,8 @@ struct
       Some s -> { s with sfields = sfields @ s.sfields }
     | None -> { default_struct_status with sfields }
 
-  let default_enum_status = { etypedef = None; eitems = [] }
+  let default_enum_status = 
+    { etypedef = None; eitems = [] }
 
   let record_enum_tag name =
     update (Enum_ name) (default_to default_enum_status)

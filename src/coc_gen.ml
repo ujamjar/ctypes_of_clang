@@ -1,4 +1,5 @@
 open Coc_extract
+open Coc_typing
 
 let with_open_out filename f =
   let fd = open_out filename in
@@ -98,51 +99,14 @@ and types_prologue : (_, _, _) format = "
 open Ctypes@\n@\n\
 module Bindings(T: Cstubs.Types.TYPE) =@\n\
 @[<hov 2>struct@\n\
-open T@\n\
-let ssize_t = lift_typ PosixTypes.ssize_t@\n"
+open T@\n"
+(*"let ssize_t = lift_typ PosixTypes.ssize_t@\n"*) (* why? *)
 and types_epilogue : (_,_,_) format = "@]@\nend@\n"
 
 let make_module_name filename =
   match Humane_re.Str.(split (regexp "\\.")) filename with
     [] -> assert false
   | base :: _ -> String.capitalize_ascii base
-(*
-let main ~regex ~ast ~types_file ~functions_file =
-  let foreign_regex = Humane_re.Str.regexp regex in
-  match types_file with None -> failwith "types file not specified" | Some types_file ->
-    match functions_file with None -> failwith "functions file not specified" | Some functions_file ->
-      let types_module = make_module_name types_file in
-      with_open_out types_file @@ fun types_fmt ->
-      with_open_out functions_file @@ fun functions_fmt ->
-      match Stage1.M.run ast Stage1.initial_state with
-        `Result ((), (namespace : Stage1.M.state)) ->
-        let map_name_state = function
-          | Builtin -> Stage2.Declared
-          | Aliases _ -> Stage2.Undeclared
-          | Unsupported _ -> Stage2.Undeclarable in
-        let transform_state = let open Assoc in function
-          | UItem (Name_ n, s, ()) -> UItem (Name_ n, s, map_name_state s)
-          | UItem (k, v, ()) -> UItem (k, v, Stage2.Undeclared) in
-        let initial_cache_state = Stage2.{
-            stritems = []; fstritems = [];
-            namespace = List.map transform_state namespace.Stage1.statics } in
-        let m = Stage2.(M.(List.fold_left (fun m (name, typ) ->
-            if Humane_re.Str.matches foreign_regex name then
-              (m >> record_foreign name typ) else m) (return ())
-            namespace.Stage1.foreigns)) in
-        begin match Stage2.M.run m initial_cache_state with
-          | `Failure msg -> failwith msg
-          | `Result ((), {Stage2.stritems; fstritems }) ->
-            Format.fprintf functions_fmt functions_prologue types_module;
-            Format.fprintf types_fmt types_prologue;
-            List.iter (Print.link_time functions_fmt) (List.rev fstritems);
-            List.iter (Print.stritem types_fmt) (List.rev stritems);
-            Format.fprintf functions_fmt functions_epilogue;
-            Format.fprintf types_fmt types_epilogue;
-        end
-      | `Failure s -> failwith s
-*)
-let re_any = Humane_re.Str.regexp ".*"
 
 let run ?(regex=".*") ast = 
   let foreign_regex = Humane_re.Str.regexp regex in
@@ -151,17 +115,27 @@ let run ?(regex=".*") ast =
     let map_name_state = function
       | Builtin -> Stage2.Declared
       | Aliases _ -> Stage2.Undeclared
-      | Unsupported _ -> Stage2.Undeclarable in
+      | Unsupported _ -> Stage2.Undeclarable 
+    in
     let transform_state = let open Assoc in function
       | UItem (Name_ n, s, ()) -> UItem (Name_ n, s, map_name_state s)
-      | UItem (k, v, ()) -> UItem (k, v, Stage2.Undeclared) in
-    let initial_cache_state = Stage2.{
+      | UItem (k, v, ()) -> UItem (k, v, Stage2.Undeclared) 
+    in
+    let initial_cache_state = 
+      Stage2.{
         stritems = []; fstritems = [];
-        namespace = List.map transform_state namespace.Stage1.statics } in
-    let m = Stage2.(M.(List.fold_left (fun m (name, typ) ->
-        if Humane_re.Str.matches foreign_regex name then
-          (m >> record_foreign name typ) else m) (return ())
-        namespace.Stage1.foreigns)) in
+        namespace = List.map transform_state namespace.Stage1.statics 
+      } 
+    in
+    let m = 
+      Stage2.(M.(List.fold_left 
+        (fun m (name, typ) ->
+          if Humane_re.Str.matches foreign_regex name then
+          (m >> record_foreign name typ) 
+          else m) 
+        (return ())
+        namespace.Stage1.foreigns)) 
+    in
     begin match Stage2.M.run m initial_cache_state with
     | `Result ((),x) -> Ok x
     | `Failure x -> Error [|x|] end
@@ -174,7 +148,7 @@ let write_types types_fmt {Stage2.stritems; fstritems} =
   Ok ()
 
 let write_functions functions_fmt {Stage2.stritems; fstritems} =
-  let types_module = "FOO" in
+  let types_module = "FOO" in (* XXX *)
   Format.fprintf functions_fmt functions_prologue types_module;
   List.iter (Print.link_time functions_fmt) (List.rev fstritems);
   Format.fprintf functions_fmt functions_epilogue;

@@ -4,17 +4,17 @@ module Print : sig
 
   val correct : string -> string
   
-  val typ : Format.formatter -> Coc_extract.typexpr -> unit
+  val typ : Format.formatter -> Coc_typing.typexpr -> unit
   
-  val typ_paren : Format.formatter -> Coc_extract.typexpr -> unit
+  val typ_paren : Format.formatter -> Coc_typing.typexpr -> unit
   
   val fn :
     Format.formatter ->
-    Coc_extract.typexpr list * Coc_extract.typexpr -> unit
+    Coc_typing.typexpr list * Coc_typing.typexpr -> unit
   
   val fn_paren :
     Format.formatter ->
-    Coc_extract.typexpr list * Coc_extract.typexpr -> unit
+    Coc_typing.typexpr list * Coc_typing.typexpr -> unit
   
   val kind : [< `Struct | `Union ] -> string
   

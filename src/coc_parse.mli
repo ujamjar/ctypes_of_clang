@@ -19,7 +19,7 @@ module Info(Clang : Coc_clang.S) : sig
       { 
         loc : loc;
         name : string; 
-        int_type : Coc_typing.builtin_int_type option; 
+        int_type : string; 
         fields : enum_field list;
         kindname : string;
         typename : string;
