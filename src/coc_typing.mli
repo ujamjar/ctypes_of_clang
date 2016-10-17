@@ -9,14 +9,8 @@ type typexpr =
   | Function of typexpr list * typexpr
   | Funptr of typexpr list * typexpr
   | Name of string
-  | Pointer of typexpr
+  | Pointer of typexpr * bool
   | Structured of struct_tag
 
 val string_of_typexpr : typexpr -> string
-
-module Make(Clang : Coc_clang.S) : sig
-
-  val conv_ty : Clang.ctyp -> typexpr
-
-end
 

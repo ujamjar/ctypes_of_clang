@@ -29,7 +29,7 @@ struct
     | Enum s | Name s | Structured (_, s) -> fprintf fmt "%s" (correct s)
     | Function (args, rv) -> fn fmt (args, rv)
     | Funptr (args, rv) -> fprintf fmt "static_funptr@ %a" fn_paren (args, rv)
-    | Pointer t -> fprintf fmt "ptr@ %a" typ_paren t
+    | Pointer (t,_) -> fprintf fmt "ptr@ %a" typ_paren t
   and typ_paren fmt = function
     | Enum _ | Name _ | Structured _ | Unsupported _ as t -> typ fmt t
     | Array _ | Funptr _ | Pointer _ as t -> fprintf fmt "(@[%a)@]" typ t

@@ -86,6 +86,7 @@ module type S = sig
 
   module Cursor : sig
     val equal : cursor -> cursor -> bool
+    val hash : cursor -> int
     val is_null : cursor -> bool
     val spelling : cursor -> string
     val kind : cursor -> CXCursorKind.t

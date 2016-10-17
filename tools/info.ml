@@ -1,8 +1,8 @@
 open Printf
 
 module Clang = Coc_clang.Make(struct let from = None end)
-module Cparse = Coc_parse.Info(Clang)
-open Cparse
+module Cinfo = Coc_info.Make(Clang)
+open Cinfo
 
 let () = 
   let args = List.tl @@ Array.to_list Sys.argv in

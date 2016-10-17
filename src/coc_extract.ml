@@ -286,7 +286,7 @@ struct
         sequence (List.map declare_typ args) >>
         declare_typ rv
       | Name s -> declare (Name_ s)
-      | Pointer typ -> forward_declare_typ typ
+      | Pointer (typ,_) -> forward_declare_typ typ
       | Structured tag -> declare (Structured_ tag)
   and declare_fields tag : (string * typexpr) list -> unit t = function
       [] -> return ()
@@ -333,7 +333,7 @@ struct
         sequence (List.map forward_declare_typ args) >>
         forward_declare_typ rv
       | Name s -> forward_declare (Name_ s)
-      | Pointer typ -> forward_declare_typ typ
+      | Pointer (typ,_) -> forward_declare_typ typ
       | Structured tag -> forward_declare (Structured_ tag)
 
   let record_foreign name ty =

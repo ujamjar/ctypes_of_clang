@@ -4,7 +4,7 @@
 open Printf
 
 module Clang = Coc_clang.Make(struct let from = None end)
-module Cparse = Coc_parse.Info(Clang)
+module Cinfo = Coc_info.Make(Clang)
 
 let enums_c = [
   "CXAvailabilityKind";
@@ -165,12 +165,12 @@ let _ =
       "/usr/lib/llvm-3.8/include/clang-c/Index.h"
     ]
   in
-  match Cparse.run args with
+  match Cinfo.run args with
   | Error e -> Array.iter print_endline e
   | Ok r ->
     List.iter 
       (function
-        | Cparse.Enum{name; fields} when List.mem name enums_c -> begin
+        | Cinfo.Enum{name; fields} when List.mem name enums_c -> begin
             begin if !write_ml then write_enum_module name fields end;
             begin if !write_mli then write_enum_signature name fields end
         end
