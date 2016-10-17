@@ -63,7 +63,7 @@ module Make(Clang : Coc_clang.S) : sig
 
   val visit_cb : cursor -> cursor -> t list -> CXChildVisitResult.t * t list
 
-  val run : ?unsaved:(string*string) list -> string list -> (t list, string array) result
+  val run : ?unsaved:(string*string) list -> string list -> (t list, unit) result
 
 end
 

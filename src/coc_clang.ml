@@ -109,6 +109,7 @@ module type S = sig
   module Diag : sig
     val num : tu -> int
     val get : tu -> int -> diag
+    val severity : diag -> CXDiagnosticSeverity.t
     val to_string : diag -> string
     val diags : tu -> string array
   end
@@ -118,7 +119,7 @@ module type S = sig
     ?unsaved:(string * string) list ->
     args:string list -> 
     (tu -> 'a -> 'b) -> 'a -> 
-    ('b, string array) result
+    ('b, unit) result
 
 end
 
@@ -419,6 +420,10 @@ module Make(X : Dllib) = struct
       let get = foreign "clang_getDiagnostic" (tu @-> unsigned @-> returning diag) in
       (fun tu i -> get tu (U.of_int i))
     
+    let severity = 
+      let severity = foreign "clang_getDiagnosticSeverity" (diag @-> returning unsigned) in
+      CXDiagnosticSeverity.of_int << U.to_int << severity
+
     let to_string =
       let default = foreign "clang_defaultDiagnosticDisplayOptions"
         (void @-> returning unsigned) ()
@@ -430,13 +435,32 @@ module Make(X : Dllib) = struct
 
   end
 
+  module L = Log.Make(struct let section = "clang" end)
+
+  let has_log_errors tu = 
+    let num = Diag.num tu in
+    if num = 0 then false
+    else
+      let failed = ref false in
+      for i=0 to num-1 do
+        let open CXDiagnosticSeverity in
+        let diag = Diag.get tu i in
+        match Diag.severity diag with
+        | Ignored -> L.debug "%s" (Diag.to_string diag)
+        | Note -> L.debug "%s" (Diag.to_string diag)
+        | Warning -> L.warn "%s" (Diag.to_string diag)
+        | Error -> L.error "%s" (Diag.to_string diag); failed := true
+        | Fatal -> L.fatal "%s" (Diag.to_string diag); failed := true
+      done;
+      !failed
+
   let run ?options ?(unsaved=[]) ~args f arg = 
     let index = Index.create 0 0 in
     let tu = TU.parse ?options ~unsaved ~index args in
-    if Diag.num tu <> 0 then begin
-      let diags = Diag.diags tu in
+    if has_log_errors tu then begin
       TU.dispose tu;
-      Error diags
+      Index.dispose index;
+      Error ()
     end else
       let result = f tu arg in
       TU.dispose tu;

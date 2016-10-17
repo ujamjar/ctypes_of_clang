@@ -7,7 +7,7 @@ open Cinfo
 let () = 
   let args = List.tl @@ Array.to_list Sys.argv in
   match run args with
-  | Error e -> Array.iter print_endline e
+  | Error e -> ()
   | Ok r ->
     let show x l n k t = 
       printf "%s %s [%s] [%s] @%s:%i:%i:%i\n" x n k t l.file l.line l.col l.offset

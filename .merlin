@@ -5,3 +5,4 @@ PKG ctypes.foreign
 PKG ppx_deriving.runtime
 PKG humane_re
 PKG rresult
+PKG dolog

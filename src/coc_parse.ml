@@ -1,5 +1,7 @@
 open Coc_enums
 
+module L = Log.Make(struct let section = "parse" end)
+
 let rev_ok = function
   | Ok l -> Ok (List.rev l)
   | Error e -> Error e
@@ -25,7 +27,7 @@ module Make(Clang : Coc_clang.S) = struct
 
   type ctx = 
     {
-      mutable name : global CHash.t;
+      mutable name : global CHash.t [@printer fun fmt x -> Format.fprintf fmt "<CHash>"];
       mutable globals : global list;
     }
 
@@ -131,6 +133,7 @@ module Make(Clang : Coc_clang.S) = struct
       vi_val : int64 option;
       vi_is_const : bool;
     }
+    [@@ deriving show]
 
   let rec conv_ty ctx typ cursor = 
     let kind = Type.kind typ in
@@ -359,41 +362,47 @@ module Make(Clang : Coc_clang.S) = struct
 
   (*and visit_literal cursor unt = (* XXX TODO *) *)
 
-  and visit_top ctx tunit cursor _ () = 
+  and visit_top tunit cursor _ ctx = 
     match Cursor.kind cursor with
-    | UnexposedDecl -> Recurse, ()
+    | UnexposedDecl -> Recurse, ctx
     
     | StructDecl | UnionDecl ->
-      let visit ctx () = 
+      let visit ctx _ = 
         let decl = decl_name ctx cursor in
         let ci = compinfo decl in
         let ci_members = 
           Cursor.visit cursor (fun c _ m -> visit_composite c ctx m) ci.ci_members
         in
-        ctx.globals <- (GComp { ci with ci_members }) :: ctx.globals
+        ctx.globals <- (GComp { ci with ci_members }) :: ctx.globals;
+        ctx
       in
-      Continue, fwd_decl ctx cursor visit ()
+      L.info "struct/union %s" (Cursor.spelling cursor);
+      Continue, fwd_decl ctx cursor visit ctx
 
     | EnumDecl ->
-      let visit ctx () = 
+      let visit ctx _ = 
         let decl = decl_name ctx cursor in
         let ei = enuminfo decl in
         let ei_items = visit_enum cursor ei.ei_items in
-        ctx.globals <- (GEnum { ei with ei_items }) :: ctx.globals 
+        ctx.globals <- (GEnum { ei with ei_items }) :: ctx.globals;
+        ctx
       in
-      Continue, fwd_decl ctx cursor visit ()
+      L.info "enum %s" (Cursor.spelling cursor);
+      Continue, fwd_decl ctx cursor visit ctx
 
     | FunctionDecl ->
       let linkage = Cursor.linkage cursor in
-      if linkage <> CXLinkageKind.External && linkage <> CXLinkageKind.UniqueExternal then
-        Continue, ()
-      else
+      if linkage <> CXLinkageKind.External && linkage <> CXLinkageKind.UniqueExternal then begin
+        L.info "function %s invalid linkage" (Cursor.spelling cursor);
+        Continue, ctx
+      end else begin
         let vi = varinfo @@ decl_name ctx cursor in
         let typ = Cursor.cur_type cursor in
         let vi_typ = TFuncPtr(mk_fn_sig ctx typ cursor) in
         ctx.globals <- (GFunc { vi with vi_typ }) :: ctx.globals;
-        Continue, ()
-
+        L.info "function %s" (Cursor.spelling cursor);
+        Continue, ctx
+      end
     (* | VarDecl -> *)
 
     | TypedefDecl ->
@@ -407,11 +416,16 @@ module Make(Clang : Coc_clang.S) = struct
       let ti = typeinfo @@ decl_name ctx cursor in
       ctx.globals <- (GType { ti with ti_typ=typ }) :: ctx.globals;
       opaque_ty ctx under_typ;
-      Continue, ()
+      L.info "typedef %s -> %s" (Type.name (Cursor.cur_type cursor)) (Type.name under_typ);
+      Continue, ctx
 
     (* | MacroDefinition *)
 
-    | _ -> Continue, ()
+    | _ -> Continue, ctx
+
+  let run ?unsaved args = 
+    let ctx = { name = CHash.create 113; globals = [] } in
+    run ?unsaved ~args (fun tu ctx -> Cursor.visit (TU.cursor tu) (visit_top tu) ctx) ctx
 
 end
 

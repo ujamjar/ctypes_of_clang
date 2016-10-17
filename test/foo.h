@@ -35,3 +35,6 @@ enum {
 };
 
 struct y;
+
+static void yoo(void);
+

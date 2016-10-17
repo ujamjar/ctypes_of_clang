@@ -127,6 +127,7 @@ module type S = sig
   module Diag : sig
     val num : tu -> int
     val get : tu -> int -> diag
+    val severity : diag -> CXDiagnosticSeverity.t
     val to_string : diag -> string
     val diags : tu -> string array
   end
@@ -136,7 +137,7 @@ module type S = sig
     ?unsaved:(string * string) list ->
     args:string list -> 
     (tu -> 'a -> 'b) -> 'a -> 
-    ('b, string array) result
+    ('b, unit) result
 
 end
 

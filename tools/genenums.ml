@@ -166,7 +166,7 @@ let _ =
     ]
   in
   match Cinfo.run args with
-  | Error e -> Array.iter print_endline e
+  | Error () -> ()
   | Ok r ->
     List.iter 
       (function
