@@ -1,6 +1,8 @@
 #use "topfind";;
 #directory "_build/src";;
-#require "rresult,humane_re,ppx_deriving.runtime,ctypes.foreign";;
+#require "rresult,dolog,humane_re,ppx_deriving.runtime";;
+#require "ctypes,ctypes.foreign";;
+#require "compiler-libs,ppx_tools,ppx_tools.metaquot";;
 #load "ctypes_of_clang.cma";;
 
 module Clang = Coc_clang.Make(struct

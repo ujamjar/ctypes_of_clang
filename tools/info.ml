@@ -7,7 +7,7 @@ open Cinfo
 let () = 
   let args = List.tl @@ Array.to_list Sys.argv in
   match run args with
-  | Error e -> ()
+  | Error () -> ()
   | Ok r ->
     let show x l n k t = 
       printf "%s %s [%s] [%s] @%s:%i:%i:%i\n" x n k t l.file l.line l.col l.offset
@@ -23,10 +23,10 @@ let () =
         List.iter (fun (n,v) -> printf "  %s = %Li\n" n v) fields
       | Struct{loc;name;fields;kindname;typename} -> 
         show "struct" loc name kindname typename;
-        List.iter (fun (n,t) -> printf "  %s %s\n" t n) fields
+        List.iter (fun (n,t,f) -> printf "  %s %s (kind=%s)\n" t n f) fields
       | Union{loc;name;fields;kindname;typename} -> 
         show "union" loc name kindname typename;
-        List.iter (fun (n,t) -> printf "  %s %s\n" t n) fields
+        List.iter (fun (n,t,f) -> printf "  %s %s (kind=%s)\n" t n f) fields
       | Typedef{loc;name;aliases;kindname;typename} -> 
         show "typedef" loc name kindname typename;
         printf "  -> %s\n" aliases

@@ -76,7 +76,7 @@ module Make(Clang : Coc_clang.S) : sig
     {
       ci_kind : comp_kind;
       ci_name : string;
-      ci_members : comp_member list;
+      mutable ci_members : comp_member list;
     }
 
   and field_info = 
@@ -114,6 +114,7 @@ module Make(Clang : Coc_clang.S) : sig
     }
     [@@ deriving show]
 
+  module GSet : Set.S with type elt = global
 
   val run : ?unsaved:(string*string) list -> string list -> (ctx, unit) result
 

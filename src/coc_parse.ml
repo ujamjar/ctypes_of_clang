@@ -44,6 +44,7 @@ module Make(Clang : Coc_clang.S) = struct
     | GVar of var_info
     | GFunc of var_info
     | GOther
+    [@@ deriving show]
 
   and func_sig = 
     {
@@ -51,6 +52,7 @@ module Make(Clang : Coc_clang.S) = struct
       fs_args : (string * typ) list;
       fs_variadic : bool;
     }
+    [@@ deriving show]
 
   and typ = 
     | TVoid
@@ -63,6 +65,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TNamed of type_info
     | TComp of comp_info
     | TEnum of enum_info
+    [@@ deriving show]
 
   and ikind = 
     | IBool
@@ -77,10 +80,12 @@ module Make(Clang : Coc_clang.S) = struct
     | ILongLong
     | IULongLong
     | IWChar
+    [@@ deriving show]
 
   and fkind = 
     | FFloat
     | FDouble
+    [@@ deriving show]
   
   and comp_member = 
     | Field of field_info
@@ -88,17 +93,20 @@ module Make(Clang : Coc_clang.S) = struct
     | Enum of enum_info
     | CompField of comp_info * field_info
     | EnumField of enum_info * field_info
+    [@@ deriving show]
 
   and comp_kind = 
     | Struct
     | Union
+    [@@ deriving show]
     
   and comp_info = 
     {
       ci_kind : comp_kind;
       ci_name : string;
-      ci_members : comp_member list;
+      mutable ci_members : comp_member list;
     }
+    [@@ deriving show]
 
   and field_info = 
     {
@@ -106,6 +114,7 @@ module Make(Clang : Coc_clang.S) = struct
       fi_typ : typ;
       (*fi_bitfields : (string * int) list option;*)
     }
+    [@@ deriving show]
 
   and enum_info = 
     {
@@ -113,18 +122,21 @@ module Make(Clang : Coc_clang.S) = struct
       ei_items : enum_item list;
       ei_kind : ikind;
     }
+    [@@ deriving show]
 
   and enum_item = 
     {
       eit_name : string;
       eit_val : int64;
     }
+    [@@ deriving show]
 
   and type_info =
     {
       ti_name : string;
       ti_typ : typ;
     }
+    [@@ deriving show]
 
   and var_info = 
     {
@@ -135,8 +147,13 @@ module Make(Clang : Coc_clang.S) = struct
     }
     [@@ deriving show]
 
+  module GSet = Set.Make(struct type t = global let compare = compare end)
+
   let rec conv_ty ctx typ cursor = 
     let kind = Type.kind typ in
+    let () = L.debug "conv_ty %s [%s] [%s]" 
+        (C.to_string kind)
+        (Type.name typ) (Cursor.spelling cursor) in
     match kind with
     
     (* base int and float types *)
@@ -207,7 +224,9 @@ module Make(Clang : Coc_clang.S) = struct
     }
 
   and conv_decl_ty ctx cursor = 
-    match Cursor.kind cursor with
+    let kind = Cursor.kind cursor in
+    let () = L.debug "conv_decl_ty: %s" (to_string kind) in
+    match kind with
     | StructDecl | UnionDecl -> 
         let decl = decl_name ctx cursor in
         let ci = compinfo decl in
@@ -242,7 +261,9 @@ module Make(Clang : Coc_clang.S) = struct
     let name = decl_name ctx decl in
     ctx.globals <- name :: ctx.globals
 
-  and fwd_decl : type a. ctx -> Clang.cursor -> (ctx -> a -> a) -> a -> a = fun ctx cursor f a -> 
+  and fwd_decl 
+    : type a. ctx -> Clang.cursor -> (ctx -> a -> a) -> a -> a 
+    = fun ctx cursor f a -> 
     let def = Cursor.definition cursor in
     if Cursor.equal def cursor then f ctx a
     else 
@@ -326,23 +347,39 @@ module Make(Clang : Coc_clang.S) = struct
         let name = Cursor.spelling cursor in
         let typ = conv_ty ctx (Cursor.cur_type cursor) cursor in
         let field = { fi_name=name; fi_typ=typ } in
+        (*let () =
+          begin match inner_composite typ with
+          | None -> L.debug "inner_composite: None"
+          | Some(c) -> L.debug "inner_composite: %s" (show_comp_info c) end;
+          begin match inner_enumeration typ with
+          | None -> L.debug "inner_enumeration: None"
+          | Some(c) -> L.debug "inner_enumeration: %s" (show_enum_info c) end;
+          begin match members with
+          | [] -> L.debug "members=[]"
+          | h::_ -> L.debug "member=%s\n" (show_comp_member h) end
+        in*)
         match inner_composite typ, inner_enumeration typ, members with
-        | Some(c), None, ((Comp(h))::t) when h=c -> 
+        | Some(c), _, ((Comp(h))::t) when h=c -> 
+          L.debug "replacing composite field";
           (CompField(h, field)) :: t
-        | None, Some(e), ((Enum(h))::t) when h=e -> 
+        | _, Some(e), ((Enum(h))::t) when h=e -> 
+          L.debug "replacing enum field";
           (EnumField(h, field)) :: t
         | _ -> 
+          L.debug "adding field";
           (Field field) :: members
       end
       | StructDecl | UnionDecl ->
         let visit ctx members =
           let decl = decl_name ctx cursor in
           let ci = compinfo decl in
-          let ci_members = 
+          let m = 
             Cursor.visit cursor (fun c _ m -> visit_composite c ctx m) ci.ci_members 
           in
-          (Comp { ci with ci_members }) :: members
+          ci.ci_members <- m;
+          (Comp ci) :: members
         in
+        L.debug "anonymous struct";
         fwd_decl ctx cursor visit members
       | EnumDecl ->
         let visit ctx members = 
@@ -370,10 +407,11 @@ module Make(Clang : Coc_clang.S) = struct
       let visit ctx _ = 
         let decl = decl_name ctx cursor in
         let ci = compinfo decl in
-        let ci_members = 
+        let m = 
           Cursor.visit cursor (fun c _ m -> visit_composite c ctx m) ci.ci_members
         in
-        ctx.globals <- (GComp { ci with ci_members }) :: ctx.globals;
+        ci.ci_members <- m;
+        ctx.globals <- (GComp ci) :: ctx.globals;
         ctx
       in
       L.info "struct/union %s" (Cursor.spelling cursor);
@@ -412,7 +450,7 @@ module Make(Clang : Coc_clang.S) = struct
         | C.Unexposed -> Type.canonical_type under_typ
         | _ -> under_typ
       in
-      let typ = conv_ty ctx (Cursor.cur_type cursor) cursor in
+      let typ = conv_ty ctx under_typ cursor in
       let ti = typeinfo @@ decl_name ctx cursor in
       ctx.globals <- (GType { ti with ti_typ=typ }) :: ctx.globals;
       opaque_ty ctx under_typ;

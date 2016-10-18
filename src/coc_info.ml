@@ -42,7 +42,7 @@ module Make(Clang : Coc_clang.S) = struct
       {
         loc : loc;
         name : string; 
-        fields : (string * string) list;
+        fields : (string * string * string) list;
         kindname : string;
         typename : string;
       }
@@ -51,7 +51,7 @@ module Make(Clang : Coc_clang.S) = struct
       {
         loc : loc;
         name : string; 
-        fields : (string * string) list;
+        fields : (string * string * string) list;
         kindname : string;
         typename : string;
       }
@@ -83,13 +83,13 @@ module Make(Clang : Coc_clang.S) = struct
       Continue, data
 
   let struct_cb cursor parent data = 
+    let name = Cursor.spelling cursor in
+    let typ = Type.name @@ Cursor.cur_type cursor in
     match Cursor.kind cursor with
     | FieldDecl ->
-      let name = Cursor.spelling cursor in
-      let typ = Type.name @@ Cursor.cur_type cursor in
-      Continue, ((name,typ)::data)
-    | _ ->
-      Continue, data
+      Continue, ((name,typ,to_string FieldDecl)::data)
+    | x ->
+      Continue, ((name,typ,to_string x)::data)
 
   let func_cb cursor parent data = 
     match Cursor.kind cursor with

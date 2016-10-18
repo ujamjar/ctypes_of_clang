@@ -6,3 +6,4 @@ PKG ppx_deriving.runtime
 PKG humane_re
 PKG rresult
 PKG dolog
+PKG ppx_tools.metaquot

@@ -38,7 +38,7 @@ module Make(Clang : Coc_clang.S) : sig
       {
         loc : loc;
         name : string; 
-        fields : (string * string) list;
+        fields : (string * string * string) list;
         kindname : string;
         typename : string;
       }
@@ -47,7 +47,7 @@ module Make(Clang : Coc_clang.S) : sig
       {
         loc : loc;
         name : string; 
-        fields : (string * string) list;
+        fields : (string * string * string) list;
         kindname : string;
         typename : string;
       }
