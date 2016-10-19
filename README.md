@@ -37,30 +37,34 @@ Ctypes structure definition).
 # type foo;;
 # let foo = [%cstruct {|struct foo { int x; int y }; |}];;
 val foo :
-  < _struct : < alloc : ?finalise:(foo Ctypes.structure Ctypes.ptr -> unit) ->
-                        foo Ctypes.structure ->
-                        foo Ctypes.structure Ctypes.ptr;
-                make : ?finalise:((foo, [ `Struct ]) Ctypes.structured ->
-                                  unit) ->
-                       unit -> (foo, [ `Struct ]) Ctypes.structured;
-                typ : foo Ctypes.structure Ctypes.typ >;
-    x : (int32, foo Ctypes.structure) Ctypes.field;
-    y : (int32, foo Ctypes.structure) Ctypes.field > =
+  < _struct : 
+      < alloc : ?finalise:(foo structure ptr -> unit) -> foo structure -> foo structure ptr;
+        make : ?finalise:((foo, [ `Struct ]) structured -> unit) -> unit -> (foo, [ `Struct ]) structured;
+        typ : foo structure typ >;
+    x : (int32, foo structure) field;
+    y : (int32, foo structure) field > =
   <obj>
+
 # let foo_struct = foo#_struct#make();;
-val foo_struct : (foo, [ `Struct ]) Ctypes.structured = { x = 0, y = 0  }
+val foo_struct : (foo, [ `Struct ]) structured = { x = 0, y = 0  }
+
 # setf foo_struct foo#x 1l;;
 - : unit = ()
+
 # let foo_ptr = foo#_struct#alloc foo_struct;;
-val foo_ptr : foo Ctypes.structure Ctypes.ptr = (struct foo*) 0x33a8280
+val foo_ptr : foo structure ptr = (struct foo*) 0x33a8280
+
 # !@ foo_ptr;;
-- : foo Ctypes.structure = { x = 1, y = 0  }
+- : foo structure = { x = 1, y = 0  }
+
 # setf (!@ foo_ptr) foo#y 2l;;
 - : unit = ()
+
 # !@ foo_ptr;;
-- : foo Ctypes.structure = { x = 1, y = 2  }
+- : foo structure = { x = 1, y = 2  }
+
 # foo_struct;;
-- : (foo, [ `Struct ]) Ctypes.structured = { x = 1, y = 0  }
+- : (foo, [ `Struct ]) structured = { x = 1, y = 0  }
 ```
 
 The following shows the actual generated ocaml code.
