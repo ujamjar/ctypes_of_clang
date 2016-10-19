@@ -65,13 +65,15 @@ module Make(Clang : Coc_clang.S) = struct
 
     let ctypes_opened = true
 
-    let error loc str = raise (Location.Error(Location.error ~loc str))
+    let error ?loc str = 
+      let loc = match loc with Some(loc) -> loc | None -> !default_loc in
+      raise (Location.Error(Location.error ~loc str))
 
     let clid ?(m="Ctypes") s = 
       if ctypes_opened then evar s 
       else evar (m ^ s)
 
-    let rec ctype loc t = 
+    let rec ctype ~loc t = 
       match t with
       | TVoid -> clid "void"
       (*| TInt(IBool) ->*)
@@ -87,51 +89,91 @@ module Make(Clang : Coc_clang.S) = struct
       | TInt(IULongLong) -> clid "ullong"
       | TFloat(FFloat) -> clid "float"
       | TFloat(FDouble) -> clid "double"
-      | TPtr(t,_) -> [%expr [%e clid "ptr"] [%e ctype loc t]]
-      | _ -> error loc "FIXME unsupported type."
+      | TPtr(t,_) -> [%expr [%e clid "ptr"] [%e ctype ~loc t]]
+      | _ -> error ~loc "FIXME unsupported type."
 
     let carrow a b = 
       if ctypes_opened then [%expr ([%e a] @-> [%e b])]
       else [%expr (Ctypes.(@->) [%e a] [%e b])]
 
-    let func_ctype loc ret args = 
+    let func_ctype ~loc ret args = 
       let args = if args = [] then [TVoid] else (List.map snd args) in
       let fsig = 
-        List.fold_right (fun a r -> carrow (ctype loc a) r) args 
-          [%expr returning [%e ctype loc ret]]
+        List.fold_right (fun a r -> carrow (ctype ~loc a) r) args 
+          [%expr returning [%e ctype ~loc ret]]
       in
       fsig
 
     let coc_mapper argv = 
+      let open Cparse in
+      let run loc code f = 
+        match run ~unsaved:["coc_ppx.c",code] ["coc_ppx.c"] with
+        | Ok g -> f g
+        | Error () -> error ~loc "parse error"
+      in
       { default_mapper with
         expr = fun mapper expr ->
+          (* let f = [%cfn "ret_type fn(args,...);"] *)
+          let continue () = default_mapper.expr mapper expr in
           match expr with
-          | { pexp_desc = Pexp_extension ({ txt="cfn"; loc }, pstr); _ } -> begin
-              match pstr with
-              | PStr [{ pstr_desc = 
-                Pstr_eval ({ 
-                  pexp_loc = loc; 
-                  pexp_desc = Pexp_constant (Pconst_string (sym,_)) 
-                }, _) }] -> begin
-                  let open Cparse in
-
-                  match run ~unsaved:["coc_ppx.c",sym] ["coc_ppx.c"] with
-                  | Ok { globals=[GFunc {vi_name; 
-                                         vi_typ=TFuncPtr
-                                           { fs_args; fs_ret; fs_variadic=false };
-                                         vi_val=None; vi_is_const=false}]; _ } -> begin
-                      [%expr [%e clid ~m:"Foreign" "foreign"] 
-                          [%e Exp.constant (Pconst_string(vi_name,None))] 
-                          [%e func_ctype loc fs_ret fs_args] ]
-                  end
-                  | Ok _ -> 
-                    error loc "[cfn] expecting single function defn"
-                  | Error () -> 
-                    error loc "[cfn] parse error"
-              end
-              | _ -> error loc "[cfn] bad payload"
+          | [%expr [%cfn [%e? 
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> begin
+            run loc code @@ function
+            | { globals=[GFunc {vi_name; 
+                                   vi_typ=TFuncPtr
+                                     { fs_args; fs_ret; fs_variadic=false };
+                                   vi_val=None; vi_is_const=false}]; _ } -> begin
+                [%expr [%e clid ~m:"Foreign" "foreign"] 
+                    [%e Exp.constant (Pconst_string(vi_name,None))] 
+                    [%e func_ctype ~loc fs_ret fs_args] ]
+            end
+            | _ -> continue ()
           end
-          | _ -> default_mapper.expr mapper expr
+
+          (* let s = [%cstruct "struct s {...};"] *)
+          | [%expr [%cstruct [%e? 
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> begin
+            run loc code @@ function
+            | { globals=[GComp{ci_kind=Struct; ci_name; ci_members }]; _ } -> 
+              let typ = tconstr ci_name [] in
+              let ename = str ci_name in
+              let method_ loc txt exp = 
+                Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp))
+              in
+              
+              let map_fields f = List.map (function
+                  | Field(fi) -> f fi
+                  | _ -> error ~loc "unsupported structure field") (List.rev ci_members)
+              in
+              
+              let methods = map_fields (fun fi -> method_ loc fi.fi_name (evar fi.fi_name)) in
+              let decl_field fi l = 
+                [%expr let [%p pvar fi.fi_name] = 
+                         field [%e evar "_struct"] [%e str fi.fi_name] [%e ctype loc fi.fi_typ] in [%e l]]
+              in
+              let obj = 
+                let _struct = 
+                  method_ loc "_struct" 
+                    [%expr object 
+                      method typ = _struct
+                      method alloc ?finalise def = allocate ?finalise _struct def
+                      method make ?finalise () = make ?finalise _struct
+                    end]
+                in
+                Exp.object_ (Cstr.mk (Pat.any()) 
+                  (_struct :: methods))
+              in
+              [%expr let _struct : [%t typ] structure typ = structure [%e ename] in 
+                [%e 
+                  List.fold_right decl_field
+                    (map_fields (fun fi -> fi))
+                    [%expr let () = seal _struct in 
+                           [%e obj] ]
+                ]
+              ]
+            | _ -> continue ()
+          end
+          | _ -> continue ()
       }
 
     let register () = register "cfn" coc_mapper

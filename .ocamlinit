@@ -12,3 +12,8 @@ module Cinfo = Coc_info.Make(Clang)
 module Cparse = Coc_parse.Make(Clang)
 
 open Rresult.R
+
+open Ctypes
+open Foreign
+
+#ppx "./ppx_coc.byte";;
