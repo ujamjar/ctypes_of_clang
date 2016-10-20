@@ -94,8 +94,10 @@ module Make(Clang : Coc_clang.S) = struct
       | TPtr(t,_) -> [%expr [%e evar "ptr"] [%e ctype ~loc t]]
       | TNamed(t) -> evar t.ti_name
       | TArray(t,s) -> 
-        if s = 0L then error ~loc "zero length array in structure" 
-        else [%expr [%e evar "array"] [%e ctype ~loc t]]
+        if s = 0L then ctype ~loc (TPtr(t,false))
+        else [%expr [%e evar "array"] 
+                [%e Ast_convenience.int (Int64.to_int s)] 
+                [%e ctype ~loc t]]
       | TComp(ci) -> evar ci.ci_name
       | TEnum(ei) -> ctype ~loc (TInt(ei.ei_kind))
       | TFuncPtr(fs) -> 
@@ -194,7 +196,11 @@ module Make(Clang : Coc_clang.S) = struct
               {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
             [%stri let [%p binding] = [%e cstruct loc code] ]
 
+          (* [%ccode ...] *)
+          (*| [%stri module*)
+
           | _ -> continue ()
+
 
         end;
           

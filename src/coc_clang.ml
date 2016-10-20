@@ -278,7 +278,7 @@ module Make(X : Dllib) = struct
     let declaration = foreign "clang_getTypeDeclaration" (ctyp @-> returning cursor)
 
     let c2ll n = 
-      let f = foreign "clang_Type_getSizeOf" (ctyp @-> returning llong) in
+      let f = foreign n (ctyp @-> returning llong) in
       f >> Signed.LLong.to_int64 
 
     let min0 x = if x < 0L then 0L else x
