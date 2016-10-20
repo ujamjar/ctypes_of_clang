@@ -1,26 +1,18 @@
 open Coc_enums
 
 let rev_ok = function
-  | Ok l -> Ok (List.rev l)
+  | Ok (l) -> Ok (List.rev l)
   | Error e -> Error e
 
 module Make(Clang : Coc_clang.S) = struct
   open Clang
 
   type enum_field = string * int64
-  
-  type loc = 
-    {
-      file : string;
-      line : int;
-      col : int;
-      offset : int;
-    }
 
   type t = 
     | Enum of 
       { 
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         int_type : string; 
         fields : enum_field list;
@@ -30,7 +22,7 @@ module Make(Clang : Coc_clang.S) = struct
 
     | Function of 
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         returns : string;
         args : string list;
@@ -40,7 +32,7 @@ module Make(Clang : Coc_clang.S) = struct
 
     | Struct of 
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         fields : (string * string * string) list;
         kindname : string;
@@ -49,7 +41,7 @@ module Make(Clang : Coc_clang.S) = struct
 
     | Union of 
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         fields : (string * string * string) list;
         kindname : string;
@@ -58,7 +50,7 @@ module Make(Clang : Coc_clang.S) = struct
     
     | Typedef of
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         aliases : string;
         kindname : string;
@@ -68,10 +60,7 @@ module Make(Clang : Coc_clang.S) = struct
   open CXChildVisitResult
   open CXCursorKind
 
-  let get_loc cursor = 
-    let file, line, col, offset = Loc.location (Cursor.location cursor) in
-    let file = File.name file in
-    { file; line; col; offset }
+  let get_loc cursor = Loc.location (Cursor.location cursor)
 
   let enum_cb cursor parent data = 
     match Cursor.kind cursor with
@@ -145,7 +134,7 @@ module Make(Clang : Coc_clang.S) = struct
     Continue, data
 
   let run ?unsaved args = 
-    rev_ok @@ run ?unsaved ~args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) []
+    rev_ok @@ run ~log:true ?unsaved ~args (fun tu -> Cursor.visit (TU.cursor tu) visit_cb) []
 
 end
 

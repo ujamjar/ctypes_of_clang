@@ -43,7 +43,14 @@ module type S = sig
   val loc : loc typ
 
   module Loc : sig
-    val location : loc -> (file * int * int * int)
+    type t = 
+      {
+        file : string;
+        line : int;
+        col : int;
+        offset : int;
+      }
+    val location : loc -> t
   end
 
   type ctyp
@@ -114,12 +121,17 @@ module type S = sig
     val diags : tu -> string array
   end
 
+  type error_msg = Loc.t * string 
+  type error_msgs = error_msg list
+
   val run : 
+    ?log:bool ->
+    ?pedantic:bool ->
     ?options:CXTranslationUnit_Flags.t list -> 
     ?unsaved:(string * string) list ->
     args:string list -> 
     (tu -> 'a -> 'b) -> 'a -> 
-    ('b, unit) result
+    ('b, error_msgs) result
 
 end
 
@@ -208,6 +220,14 @@ module Make(X : Dllib) = struct
 
   module Loc = struct
 
+    type t = 
+      {
+        file : string;
+        line : int;
+        col : int;
+        offset : int;
+      }
+
     let location = 
       let loc = foreign "clang_getSpellingLocation"
         (loc @-> ptr file @-> ptr unsigned @-> ptr unsigned @-> ptr unsigned @-> returning void)
@@ -218,7 +238,13 @@ module Make(X : Dllib) = struct
         let col = allocate unsigned U.zero in
         let ofs = allocate unsigned U.zero in
         let () = loc s fp line col ofs in
-        !@ fp, U.to_int (!@ line), U.to_int (!@ col), U.to_int (!@ ofs)
+        let file = File.name (!@ fp) in
+        {
+          file;
+          line=U.to_int (!@ line); 
+          col=U.to_int (!@ col); 
+          offset=U.to_int (!@ ofs);
+        }
 
   end
 
@@ -424,6 +450,8 @@ module Make(X : Dllib) = struct
       let severity = foreign "clang_getDiagnosticSeverity" (diag @-> returning unsigned) in
       CXDiagnosticSeverity.of_int << U.to_int << severity
 
+    let location = foreign "clang_getDiagnosticLocation" (diag @-> returning loc) 
+
     let to_string =
       let default = foreign "clang_defaultDiagnosticDisplayOptions"
         (void @-> returning unsigned) ()
@@ -437,30 +465,46 @@ module Make(X : Dllib) = struct
 
   module L = Log.Make(struct let section = "clang" end)
 
-  let has_log_errors tu = 
-    let num = Diag.num tu in
-    if num = 0 then false
-    else
-      let failed = ref false in
-      for i=0 to num-1 do
-        let open CXDiagnosticSeverity in
-        let diag = Diag.get tu i in
-        match Diag.severity diag with
-        | Ignored -> L.debug "%s" (Diag.to_string diag)
-        | Note -> L.debug "%s" (Diag.to_string diag)
-        | Warning -> L.warn "%s" (Diag.to_string diag)
-        | Error -> L.error "%s" (Diag.to_string diag); failed := true
-        | Fatal -> L.fatal "%s" (Diag.to_string diag); failed := true
-      done;
-      !failed
+  type error_msg = Loc.t * string 
+  type error_msgs = error_msg list
 
-  let run ?options ?(unsaved=[]) ~args f arg = 
+  let errors_and_warnings ~log ~pedantic ~tu = 
+    let num = Diag.num tu in
+    let rec pmap e = function
+      | [] -> List.rev e
+      | `error s :: t -> pmap (s::e) t
+      | `ignore :: t -> pmap e t
+    in
+    pmap [] @@
+    Array.to_list @@
+    Array.init num (fun i ->
+      let open CXDiagnosticSeverity in
+      let diag = Diag.get tu i in
+      let f (l : ('a,out_channel,unit) format -> 'a) is_err = 
+        let s = Diag.to_string diag in
+        (if log then l "%s" s);
+        if is_err then 
+          let loc = Loc.location (Diag.location diag) in
+          `error (loc,s)
+        else 
+          `ignore
+      in
+      match Diag.severity diag with
+      | Ignored -> f L.debug false
+      | Note -> f L.debug false
+      | Warning -> f L.warn pedantic
+      | Error -> f L.error true
+      | Fatal -> f L.fatal true
+    )
+
+  let run ?(log=false) ?(pedantic=false) ?options ?(unsaved=[]) ~args f arg = 
     let index = Index.create 0 0 in
     let tu = TU.parse ?options ~unsaved ~index args in
-    if has_log_errors tu then begin
+    let errs = errors_and_warnings ~log ~pedantic ~tu in
+    if errs <> [] then begin
       TU.dispose tu;
       Index.dispose index;
-      Error ()
+      Error errs
     end else
       let result = f tu arg in
       TU.dispose tu;

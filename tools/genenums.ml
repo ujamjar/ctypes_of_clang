@@ -166,7 +166,7 @@ let _ =
     ]
   in
   match Cinfo.run args with
-  | Error () -> ()
+  | Error _ -> ()
   | Ok r ->
     List.iter 
       (function
@@ -175,5 +175,5 @@ let _ =
             begin if !write_mli then write_enum_signature name fields end
         end
         | _ -> ())
-      (List. rev r)
+      (List.rev r)
 

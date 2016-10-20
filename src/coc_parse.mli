@@ -116,7 +116,10 @@ module Make(Clang : Coc_clang.S) : sig
 
   module GSet : Set.S with type elt = global
 
-  val run : ?unsaved:(string*string) list -> string list -> (ctx, unit) result
+  val run : 
+    ?log:bool -> ?pedantic:bool -> 
+    ?unsaved:(string*string) list -> string list -> 
+    (ctx, error_msgs) result
 
 end
 

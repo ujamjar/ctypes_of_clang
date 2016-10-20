@@ -7,9 +7,10 @@ open Cinfo
 let () = 
   let args = List.tl @@ Array.to_list Sys.argv in
   match run args with
-  | Error () -> ()
+  | Error _ -> ()
   | Ok r ->
     let show x l n k t = 
+      let open Clang.Loc in
       printf "%s %s [%s] [%s] @%s:%i:%i:%i\n" x n k t l.file l.line l.col l.offset
     in
     List.iter (function

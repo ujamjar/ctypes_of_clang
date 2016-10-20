@@ -2,7 +2,7 @@
 "src": include
 "tools": include
 
-<{src,tools}/*.{ml,mli,cmi,cmo,byte,top}>: package(humane_re), package(rresult), package(dolog)
+<{src,tools}/*.{ml,mli,cmi,cmo,byte,top}>: package(humane_re), package(rresult), package(dolog), package(ppx_deriving.runtime)
 <src/coc_gen.{ml,mli}>: package(ppx_tools.metaquot)
 <src/coc_parse.{ml,mli}>: package(ppx_deriving.show)
 <src/coc_clang.{ml,mli}>: package(ctypes.foreign)

@@ -193,9 +193,9 @@ module Make(Clang : Coc_clang.S) = struct
     | C.Unexposed | C.FunctionProto | C.FunctionNoProto ->
       let ret = Type.ret_type typ in
       let decl = Type.declaration typ in
-      if Type.kind ret = C.Invalid then 
+      if Type.kind ret <> C.Invalid then 
         TFuncPtr(mk_fn_sig ctx typ cursor)
-      else if Cursor.kind decl = NoDeclFound then
+      else if Cursor.kind decl <> NoDeclFound then
         TPtr(conv_decl_ty ctx decl, is_const)
       else if Cursor.kind cursor = VarDecl then
         conv_ty ctx (Type.canonical_type typ) cursor
@@ -461,9 +461,10 @@ module Make(Clang : Coc_clang.S) = struct
 
     | _ -> Continue, ctx
 
-  let run ?unsaved args = 
+  let run ?log ?pedantic ?unsaved args = 
     let ctx = { name = CHash.create 113; globals = [] } in
-    run ?unsaved ~args (fun tu ctx -> Cursor.visit (TU.cursor tu) (visit_top tu) ctx) ctx
+    run ?log ?pedantic ?unsaved ~args 
+      (fun tu ctx -> Cursor.visit (TU.cursor tu) (visit_top tu) ctx) ctx
 
 end
 

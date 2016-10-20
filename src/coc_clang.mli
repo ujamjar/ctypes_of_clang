@@ -53,7 +53,14 @@ module type S = sig
   val loc : loc typ
 
   module Loc : sig
-    val location : loc -> (file * int * int * int)
+    type t = 
+      {
+        file : string;
+        line : int;
+        col : int;
+        offset : int;
+      }
+    val location : loc -> t
   end
 
   (** {2 CXType} *)
@@ -132,12 +139,16 @@ module type S = sig
     val diags : tu -> string array
   end
 
+  type error_msg = Loc.t * string 
+  type error_msgs = error_msg list
+
   val run : 
+    ?log:bool -> ?pedantic:bool ->
     ?options:CXTranslationUnit_Flags.t list -> 
     ?unsaved:(string * string) list ->
     args:string list -> 
     (tu -> 'a -> 'b) -> 'a -> 
-    ('b, unit) result
+    ('b, error_msgs) result
 
 end
 

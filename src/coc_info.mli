@@ -5,18 +5,10 @@ module Make(Clang : Coc_clang.S) : sig
 
   type enum_field = string * int64
 
-  type loc = 
-    {
-      file : string;
-      line : int;
-      col : int;
-      offset : int;
-    }
-
   type t = 
     | Enum of 
       { 
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         int_type : string; 
         fields : enum_field list;
@@ -26,7 +18,7 @@ module Make(Clang : Coc_clang.S) : sig
 
     | Function of 
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         returns : string;
         args : string list;
@@ -36,7 +28,7 @@ module Make(Clang : Coc_clang.S) : sig
 
     | Struct of 
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         fields : (string * string * string) list;
         kindname : string;
@@ -45,7 +37,7 @@ module Make(Clang : Coc_clang.S) : sig
 
     | Union of 
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         fields : (string * string * string) list;
         kindname : string;
@@ -54,7 +46,7 @@ module Make(Clang : Coc_clang.S) : sig
 
     | Typedef of
       {
-        loc : loc;
+        loc : Loc.t;
         name : string; 
         aliases : string;
         kindname : string;
@@ -63,7 +55,8 @@ module Make(Clang : Coc_clang.S) : sig
 
   val visit_cb : cursor -> cursor -> t list -> CXChildVisitResult.t * t list
 
-  val run : ?unsaved:(string*string) list -> string list -> (t list, unit) result
+  val run : ?unsaved:(string*string) list -> string list -> 
+    (t list, error_msgs) result
 
 end
 

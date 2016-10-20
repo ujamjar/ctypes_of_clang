@@ -50,11 +50,11 @@ let code =
 let x = 
   let args = List.rev !clang_args in
   let args = args @ (List.map fst code) in
-  Cparse.run ~unsaved:code args 
+  Cparse.run ~log:true ~unsaved:code args 
 
 let () = 
   match x with
-  | Error x -> L.fatal "%s" "fatal error."
+  | Error _ -> L.fatal "%s" "fatal error."
   | Ok(ctx) -> begin
     L.info "%s" "Ast generation OK.";
     L.debug "%t" (fun f -> fprintf f "%s" (Cparse.show_ctx ctx));
