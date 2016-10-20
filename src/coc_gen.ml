@@ -119,63 +119,89 @@ module Make(Clang : Coc_clang.S) = struct
       | Ok (g) -> f g
       | Error (errs) -> cerror ~loc errs
 
+    let gen_cfn loc vi_name fs_args fs_ret = 
+      [%expr [%e evar "foreign"] 
+          [%e Exp.constant (Pconst_string(vi_name,None))] 
+          [%e func_ctype ~loc fs_ret fs_args] ]
+      
     let cfn loc code = 
       run loc code @@ function
-      | { globals=[GFunc {vi_name; 
-                             vi_typ=TFuncPtr
-                               { fs_args; fs_ret; fs_variadic=false };
-                             vi_val=None; vi_is_const=false}]; _ } -> 
-          [%expr [%e evar "foreign"] 
-              [%e Exp.constant (Pconst_string(vi_name,None))] 
-              [%e func_ctype ~loc fs_ret fs_args] ]
+      | { globals=(GFunc {vi_name; 
+                          vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
+                          vi_val=None; vi_is_const=false})::_; _ } -> 
+        gen_cfn loc vi_name fs_args fs_ret 
       | _ -> error "expecting function definition"
+
+    let pvar loc s = Pat.var (Location.mkloc s loc)
+
+    let gen_cstruct loc ci_name ci_members = 
+      let typ = Ast_helper.Typ.variant 
+          [Parsetree.Rtag(ci_name, [], true, [])] 
+          Asttypes.Closed None
+      in
+      let sstruct = "_struct" in
+      let pstruct = pvar loc sstruct in
+      let ename = str ci_name in
+      let method_ loc txt exp = 
+        Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp))
+      in
+      
+      let map_fields f = List.map (function
+          | Field(fi) -> f fi
+          | _ -> error ~loc "unsupported structure field") (List.rev ci_members)
+      in
+      
+      let methods = map_fields 
+          (fun fi -> method_ loc fi.fi_name (evar fi.fi_name)) 
+      in
+      let decl_field fi l = 
+        [%expr 
+          let [%p pvar loc fi.fi_name] = 
+            field [%e evar sstruct] [%e str fi.fi_name] [%e ctype loc fi.fi_typ] in [%e l]]
+      in
+      let obj = Exp.object_ (Cstr.mk (Pat.any()) methods) in
+
+      [%expr let [%p pstruct] : [%t typ] structure typ = structure [%e ename] in 
+        [%e 
+          List.fold_right decl_field
+            (map_fields (fun fi -> fi))
+            [%expr let () = seal _struct in 
+              [%e evar sstruct], [%e obj] ]
+        ]
+      ]
 
     let cstruct loc code = 
       run loc code @@ function
-      | { globals=[GComp{ci_kind=Struct; ci_name; ci_members }]; _ } -> 
-        let typ = Ast_helper.Typ.variant 
-            [Parsetree.Rtag(ci_name, [], true, [])] 
-            Asttypes.Closed None
-        in
-        let pvar s = Pat.var (Location.mkloc s loc) in
-        let sstruct = "_struct" in
-        let pstruct = pvar sstruct in
-        let ename = str ci_name in
-        let method_ loc txt exp = 
-          Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp))
-        in
-        
-        let map_fields f = List.map (function
-            | Field(fi) -> f fi
-            | _ -> error ~loc "unsupported structure field") (List.rev ci_members)
-        in
-        
-        let methods = map_fields 
-            (fun fi -> method_ loc fi.fi_name (evar fi.fi_name)) 
-        in
-        let decl_field fi l = 
-          [%expr 
-            let [%p pvar fi.fi_name] = 
-              field [%e evar sstruct] [%e str fi.fi_name] [%e ctype loc fi.fi_typ] in [%e l]]
-        in
-        let obj = Exp.object_ (Cstr.mk (Pat.any()) methods) in
-
-        [%expr let [%p pstruct] : [%t typ] structure typ = structure [%e ename] in 
-          [%e 
-            List.fold_right decl_field
-              (map_fields (fun fi -> fi))
-              [%expr let () = seal _struct in 
-                [%e evar sstruct], [%e obj] ]
-          ]
-        ]
+      | { globals=(GComp{ci_kind=Struct; ci_name; ci_members })::_; _ } -> 
+        gen_cstruct loc ci_name ci_members
       | _ -> error "expecting structure definiton"
+
+    let ccode loc code = 
+      let gen = function
+
+        | GFunc {vi_name; 
+                 vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
+                 vi_val=None; vi_is_const=false} -> 
+          [%stri
+            let [%p pvar loc vi_name] = [%e gen_cfn loc vi_name fs_args fs_ret]
+          ]
+
+        | GComp{ci_kind=Struct; ci_name; ci_members } ->
+          [%stri 
+            let ([%p pvar loc ci_name], [%p pvar loc (ci_name ^ "_members")]) = 
+                [%e gen_cstruct loc ci_name ci_members]
+          ]
+
+        | _ -> error "unsupported c global"
+
+      in
+      run loc code @@ fun ctx -> List.map gen (List.rev ctx.globals)
 
     let coc_mapper argv = 
 
       { default_mapper with
 
         structure_item = begin fun mapper stri -> 
-          let continue () = default_mapper.structure_item mapper stri in
           match stri with
 
           (* [%cfn ...] *)
@@ -196,16 +222,11 @@ module Make(Clang : Coc_clang.S) = struct
               {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
             [%stri let [%p binding] = [%e cstruct loc code] ]
 
-          (* [%ccode ...] *)
-          (*| [%stri module*)
-
-          | _ -> continue ()
-
+          | _ -> default_mapper.structure_item mapper stri 
 
         end;
           
         expr = begin fun mapper expr -> 
-          let continue () = default_mapper.expr mapper expr in
 
           match expr with
 
@@ -229,8 +250,38 @@ module Make(Clang : Coc_clang.S) = struct
               [%e? expr]]] -> 
             [%expr let [%p binding] = [%e cstruct loc code] in [%e expr]]
 
-          | _ -> continue ()
+          | _ -> default_mapper.expr mapper expr 
+
         end;
+
+        structure = begin fun mapper items ->
+          match items with
+
+          (* [%ccode ...] *)
+          | [%stri [%ccode [%e? 
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] :: rest -> 
+            ccode loc code @ mapper.structure mapper rest
+
+          (* module%ccode ...] *)
+          | {pstr_desc =
+            Pstr_extension
+             (({txt = "ccode" }, PStr [ { pstr_desc = Pstr_module {
+                pmb_name = {txt = mod_name; loc; };
+                pmb_expr = {
+                  pmod_desc = Pmod_structure [ { 
+                    pstr_desc = Pstr_eval ( { 
+                      pexp_desc = Pexp_constant (Pconst_string (code, _)); }, []);
+                    } ];
+                }; }; } ]), [])} :: rest -> begin
+              Str.module_ (Mb.mk (Location.mkloc mod_name loc) 
+                (Mod.structure @@ ccode loc code)) :: mapper.structure mapper rest
+            end
+
+          
+          | h::rest -> mapper.structure_item mapper h :: mapper.structure mapper rest
+          | [] -> []
+        end
+
       }
 
     let register () = register "cfn" coc_mapper

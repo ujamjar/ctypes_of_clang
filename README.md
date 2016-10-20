@@ -3,8 +3,8 @@
 Auto-generate Ctypes bindings from C header/source files using
 Clang.
 
-_Current status; single struct and function bindings (over basic 
-types) roughly working._
+_Current status; struct and function bindings, over basic 
+types, roughly working._
 
 # Examples
 
@@ -30,30 +30,54 @@ the C struct is used within the Ctypes structure definition.
 
 ```
 # let%cstruct sfoo, mfoo = {| struct foo { int x; float y; }; |};;
-val sfoo : [ `foo ] Ctypes.structure Ctypes.typ =
+val sfoo : [ `foo ] structure typ =
   struct foo { int32_t x; float y;  }
 val mfoo :
-  < x : (int32, [ `foo ] Ctypes.structure) Ctypes.field;
-    y : (float, [ `foo ] Ctypes.structure) Ctypes.field > =
+  < x : (int32, [ `foo ] structure) field;
+    y : (float, [ `foo ] structure) field > =
   <obj>
 
 # let foo = make sfoo;;
-val foo : ([ `foo ], [ `Struct ]) Ctypes.structured = { x = 0, y = 0  }
+val foo : ([ `foo ], [ `Struct ]) structured = { x = 0, y = 0  }
 # setf foo mfoo#x 1l;;
 - : unit = ()
 
 # let pfoo = allocate sfoo foo;;
-val pfoo : [ `foo ] Ctypes.structure Ctypes.ptr = (struct foo*) 0x3381ca0
+val pfoo : [ `foo ] structure ptr = (struct foo*) 0x3381ca0
 # setf (!@ pfoo) mfoo#y 2.3;;
 - : unit = ()
 
 # !@ pfoo;;
-- : [ `foo ] Ctypes.structure = { x = 1, y = 2.29999995232  }
+- : [ `foo ] structure = { x = 1, y = 2.29999995232  }
 # foo;;
-- : ([ `foo ], [ `Struct ]) Ctypes.structured = { x = 1, y = 0  }
+- : ([ `foo ], [ `Struct ]) structured = { x = 1, y = 0  }
 ```
 
-The following shows the actual generated ocaml code.
+### Code blocks
+
+C-code can be associated with a structure allowing multiple definitions.
+
+The structure should contain a single string item which contains the c-code
+to be processed.
+
+```
+# module%ccode X = struct {|
+  
+    struct foo { int x; int y; };
+  
+    void fn(struct foo *foo);
+  
+|} end;;
+
+module X :
+  sig
+    val foo : [ `foo ] structure typ
+    val foo_members :
+      < x : (int32, [ `foo ] structure) field;
+        y : (int32, [ `foo ] structure) field >
+    val fn : [ `foo ] structure ptr -> unit
+  end
+```
 
 ### Binding qsort
 
