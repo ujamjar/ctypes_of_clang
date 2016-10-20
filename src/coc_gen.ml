@@ -130,13 +130,13 @@ module Make(Clang : Coc_clang.S) = struct
                           vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
                           vi_val=None; vi_is_const=false})::_; _ } -> 
         gen_cfn loc vi_name fs_args fs_ret 
-      | _ -> error "expecting function definition"
+      | _ -> error ~loc "expecting function definition"
 
     let pvar loc s = Pat.var (Location.mkloc s loc)
 
     let gen_cstruct loc ci_name ci_members = 
       let typ = Ast_helper.Typ.variant 
-          [Parsetree.Rtag(ci_name, [], true, [])] 
+          [Parsetree.Rtag("struct_"^ci_name, [], true, [])] 
           Asttypes.Closed None
       in
       let sstruct = "_struct" in
@@ -166,15 +166,45 @@ module Make(Clang : Coc_clang.S) = struct
           List.fold_right decl_field
             (map_fields (fun fi -> fi))
             [%expr let () = seal _struct in 
-              [%e evar sstruct], [%e obj] ]
+              { Coc_runtime.ctype=[%e evar sstruct]; members=[%e obj]; } ]
         ]
       ]
+
+    let gen_enum loc name items = 
+      let to_int = 
+        Exp.function_ ~loc @@
+        List.rev @@ List.map (fun i -> 
+          Exp.case 
+            (Pat.variant ~loc i.eit_name None) 
+            (int ~loc (Int64.to_int i.eit_val))) items
+      in
+      let of_int =
+        let default = Exp.case (Pat.any ()) [%expr failwith "enum to_int"] in
+        (* XXX integer values ought to be unique - warn/error? *)
+        Exp.function_ ~loc @@
+        List.rev @@ default :: List.map (fun i -> 
+          Exp.case 
+            (Pat.constant ~loc (Const.int (Int64.to_int i.eit_val)))
+            (Exp.variant ~loc i.eit_name None))
+            items
+      in
+      let typ = Ast_helper.Typ.variant 
+          [Parsetree.Rtag("enum_"^name, [], true, [])] 
+          Asttypes.Closed None
+      in
+      [%expr ({ Coc_runtime.to_int=[%e to_int]; of_int=[%e of_int] } : ([%t typ],'b) enum)]
 
     let cstruct loc code = 
       run loc code @@ function
       | { globals=(GComp{ci_kind=Struct; ci_name; ci_members })::_; _ } -> 
         gen_cstruct loc ci_name ci_members
-      | _ -> error "expecting structure definiton"
+      | _ -> error ~loc "expecting structure definiton"
+
+    let cenum loc code = 
+      run loc code @@ function
+      | { globals=(GEnum{ei_name; ei_items; ei_kind})::_; _} ->
+        gen_enum loc ei_name ei_items
+      | _ -> error ~loc "expecting enum definition"
 
     let ccode loc code = 
       let gen = function
@@ -192,7 +222,7 @@ module Make(Clang : Coc_clang.S) = struct
                 [%e gen_cstruct loc ci_name ci_members]
           ]
 
-        | _ -> error "unsupported c global"
+        | _ -> error ~loc "unsupported c global"
 
       in
       run loc code @@ fun ctx -> List.map gen (List.rev ctx.globals)
@@ -222,6 +252,15 @@ module Make(Clang : Coc_clang.S) = struct
               {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
             [%stri let [%p binding] = [%e cstruct loc code] ]
 
+          (* [%cenum ...] *)
+          | [%stri [%cenum let [%p? binding] = [%e?
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
+            [%stri let [%p binding] = [%e cenum loc code] ]
+
+          | [%stri let%cenum [%p? binding] = [%e?
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
+            [%stri let [%p binding] = [%e cenum loc code] ]
+
           | _ -> default_mapper.structure_item mapper stri 
 
         end;
@@ -250,6 +289,16 @@ module Make(Clang : Coc_clang.S) = struct
               [%e? expr]]] -> 
             [%expr let [%p binding] = [%e cstruct loc code] in [%e expr]]
 
+          (* [%cenum ...] *)
+          | [%expr [%cenum [%e? 
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
+            cenum loc code
+          
+          | [%expr [%cenum let [%p? binding] = [%e?
+              {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
+              [%e? expr]]] -> 
+            [%expr let [%p binding] = [%e cenum loc code] in [%e expr]]
+
           | _ -> default_mapper.expr mapper expr 
 
         end;
@@ -272,15 +321,13 @@ module Make(Clang : Coc_clang.S) = struct
                     pstr_desc = Pstr_eval ( { 
                       pexp_desc = Pexp_constant (Pconst_string (code, _)); }, []);
                     } ];
-                }; }; } ]), [])} :: rest -> begin
+                }; }; } ]), [])} :: rest -> 
               Str.module_ (Mb.mk (Location.mkloc mod_name loc) 
                 (Mod.structure @@ ccode loc code)) :: mapper.structure mapper rest
-            end
-
           
           | h::rest -> mapper.structure_item mapper h :: mapper.structure mapper rest
           | [] -> []
-        end
+        end;
 
       }
 

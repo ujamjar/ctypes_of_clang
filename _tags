@@ -5,6 +5,6 @@
 <{src,tools}/*.{ml,mli,cmi,cmo,byte,top}>: package(humane_re), package(rresult), package(dolog), package(ppx_deriving.runtime)
 <src/coc_gen.{ml,mli}>: package(ppx_tools.metaquot)
 <src/coc_parse.{ml,mli}>: package(ppx_deriving.show)
-<src/coc_clang.{ml,mli}>: package(ctypes.foreign)
+<src/{coc_clang,coc_runtime}.{ml,mli}>: package(ctypes.foreign)
 <tools/*.{ml,mli,byte}>: package(ctypes.foreign), package(ppx_deriving.runtime), clang
 <tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools)

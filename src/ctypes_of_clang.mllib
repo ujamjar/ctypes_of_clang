@@ -2,4 +2,5 @@ Coc_enums
 Coc_clang
 Coc_parse
 Coc_info
+Coc_runtime
 Coc_gen

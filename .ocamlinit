@@ -10,10 +10,13 @@ module Clang = Coc_clang.Make(struct
 end)
 module Cinfo = Coc_info.Make(Clang)
 module Cparse = Coc_parse.Make(Clang)
+open Coc_runtime
 
 open Rresult.R
 
 open Ctypes
 open Foreign
+
+open Ast_helper
 
 #ppx "./ppx_coc.byte";;
