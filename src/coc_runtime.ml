@@ -10,6 +10,7 @@ type ('a,'b) structure =
 
 type ('a,'b) enum = 
   {
+    ctype : 'b Ctypes.typ;
     to_int : 'b -> int;
     of_int : int -> 'b;
   }

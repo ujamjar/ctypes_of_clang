@@ -79,7 +79,7 @@ module Make(Clang : Coc_clang.S) = struct
       (*| TInt(IBool) ->*)
       | TInt(ISChar) -> evar "schar"
       | TInt(IUChar) -> evar "uchar"
-      | TInt(IShort) -> evar "sshort"
+      | TInt(IShort) -> evar "short"
       | TInt(IUShort) -> evar "ushort"
       | TInt(IInt) -> evar "int32_t"
       | TInt(IUInt) -> evar "uint32_t"
@@ -97,7 +97,7 @@ module Make(Clang : Coc_clang.S) = struct
                 [%e Ast_convenience.int (Int64.to_int s)] 
                 [%e ctype ~loc t]]
       | TComp(ci) -> [%expr [%e evar ci.ci_name].ctype]
-      | TEnum(ei) -> ctype ~loc (TInt(ei.ei_kind))
+      | TEnum(ei) -> [%expr [%e evar ei.ei_name].ctype]
       | TFuncPtr(fs) -> 
         if fs.fs_variadic then error ~loc "no support for variadic functions"
         else [%expr funptr [%e func_ctype ~loc fs.fs_ret fs.fs_args]]
@@ -121,18 +121,10 @@ module Make(Clang : Coc_clang.S) = struct
       [%expr [%e evar "foreign"] 
           [%e Exp.constant (Pconst_string(vi_name,None))] 
           [%e func_ctype ~loc fs_ret fs_args] ]
-      
-    let cfn loc code = 
-      run loc code @@ function
-      | { globals=(GFunc {vi_name; 
-                          vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
-                          vi_val=None; vi_is_const=false})::_; _ } -> 
-        gen_cfn loc vi_name fs_args fs_ret 
-      | _ -> error ~loc "expecting function definition"
 
     let pvar loc s = Pat.var (Location.mkloc s loc)
 
-    let gen_cstruct loc ci_name ci_members = 
+    let rec gen_cstruct loc ci_name ci_members = 
       let typ = Ast_helper.Typ.variant 
           [Parsetree.Rtag("struct_"^ci_name, [], true, [])] 
           Asttypes.Closed None
@@ -144,9 +136,13 @@ module Make(Clang : Coc_clang.S) = struct
         Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp))
       in
       
-      let map_fields f = List.map (function
+      let map_fields f = 
+        List.map (function
           | Field(fi) -> f fi
-          | _ -> error ~loc "unsupported structure field") (List.rev ci_members)
+          (*| CompField(ci,fi) -> gen_cstruct loc fi.fi_name ci.ci_members*)
+          | _ as x -> error ~loc "unsupported structure field %s" 
+                                    (Cparse.show_comp_member x)) 
+          (List.rev ci_members)
       in
       
       let methods = map_fields 
@@ -168,6 +164,10 @@ module Make(Clang : Coc_clang.S) = struct
         ]
       ]
 
+    (* XXX phantom type no longer really makes sense 
+       XXX of_int not necessarily unique
+       XXX consider implementation via assoc lists or constants
+    *)
     let gen_enum loc name items = 
       let to_int = 
         Exp.function_ ~loc @@
@@ -190,7 +190,18 @@ module Make(Clang : Coc_clang.S) = struct
           [Parsetree.Rtag("enum_"^name, [], true, [])] 
           Asttypes.Closed None
       in
-      [%expr ({ Coc_runtime.to_int=[%e to_int]; of_int=[%e of_int] } : ([%t typ],'b) enum)]
+      [%expr
+        let to_int, of_int = [%e to_int], [%e of_int] in
+        ({ Coc_runtime.ctype = view ~read:[%e of_int] ~write:[%e to_int] int;
+           to_int; of_int } : ([%t typ],'b) Coc_runtime.enum)]
+
+    let cfn loc code = 
+      run loc code @@ function
+      | { globals=(GFunc {vi_name; 
+                          vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
+                          vi_val=None; vi_is_const=false})::_; _ } -> 
+        gen_cfn loc vi_name fs_args fs_ret 
+      | _ -> error ~loc "expecting function definition"
 
     let cstruct loc code = 
       run loc code @@ function
@@ -220,7 +231,10 @@ module Make(Clang : Coc_clang.S) = struct
         | GEnum{ei_name; ei_items; ei_kind} ->
           [%stri let [%p pvar loc ei_name] = [%e gen_enum loc ei_name ei_items] ]
 
-        | _ -> error ~loc "unsupported c global"
+        | GType{ti_name; ti_typ} ->
+          [%stri let [%p pvar loc ti_name] = [%e ctype loc ti_typ]]
+          
+        | _ as g -> error ~loc "unsupported c global [%s]" (Cparse.show_global g)
 
       in
       run loc code @@ fun ctx -> List.map gen (List.rev ctx.globals)

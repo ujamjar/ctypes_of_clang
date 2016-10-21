@@ -22,8 +22,9 @@ val sqrt : float -> float = <fun>
 
 ### Structure definition
 
-A C-structure is turned into a tuple of a ctype structure value 
-and object expression with the corresponding fields.
+A C-structure is turned into a record of type `Coc\_runtime.structure`
+which contains a ctypeis structure value and object expression with 
+the corresponding structure fields.
 
 Note that an OCaml polymorphic variant type with the same name as
 the C struct is used within the Ctypes structure definition.
@@ -37,21 +38,32 @@ val mfoo :
     y : (float, [ `foo ] structure) field > =
   <obj>
 
-# let foo = make sfoo;;
+val foo : 
+  ([ `struct_foo ], 
+   < x : (int32, [ `struct_foo ] structure) field;
+     y : (float, [ `struct_foo ] structure) field >) Coc_runtime.structure =
+    { ctype = struct foo { int32_t x; float y;  }; 
+      members = <obj> }
+
+# let sfoo = make foo.ctype;;
 val foo : ([ `foo ], [ `Struct ]) structured = { x = 0, y = 0  }
-# setf foo mfoo#x 1l;;
+# setf sfoo foo.members#x 1l;;
 - : unit = ()
 
-# let pfoo = allocate sfoo foo;;
+# let pfoo = allocate foo.ctype sfoo;;
 val pfoo : [ `foo ] structure ptr = (struct foo*) 0x3381ca0
-# setf (!@ pfoo) mfoo#y 2.3;;
+# setf (!@ pfoo) foo.members#y 2.3;;
 - : unit = ()
 
 # !@ pfoo;;
 - : [ `foo ] structure = { x = 1, y = 2.29999995232  }
-# foo;;
+# sfoo;;
 - : ([ `foo ], [ `Struct ]) structured = { x = 1, y = 0  }
 ```
+
+### Enums
+
+....
 
 ### Code blocks
 
@@ -69,13 +81,14 @@ to be processed.
   
 |} end;;
 
-module X :
-  sig
-    val foo : [ `foo ] structure typ
-    val foo_members :
-      < x : (int32, [ `foo ] structure) field;
-        y : (int32, [ `foo ] structure) field >
-    val fn : [ `foo ] structure ptr -> unit
+module X : 
+  sig 
+    val foo : 
+      ([ `struct_foo ],
+       < x : (int32, [ `struct_foo ] structure) field;
+         y : (int32, [ `struct_foo ] structure) field >)
+      Coc_runtime.structure
+    val fn : [ `struct_foo ] structure ptr -> unit
   end
 ```
 
