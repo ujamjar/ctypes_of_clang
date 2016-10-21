@@ -63,8 +63,6 @@ module Make(Clang : Coc_clang.S) = struct
     open Longident
     open Ast_convenience
 
-    let ctypes_opened = true
-
     let error ?loc str = 
       let loc = match loc with Some(loc) -> loc | None -> !default_loc in
       Printf.kprintf (fun str -> raise (Location.Error(Location.error ~loc str))) str
@@ -98,7 +96,7 @@ module Make(Clang : Coc_clang.S) = struct
         else [%expr [%e evar "array"] 
                 [%e Ast_convenience.int (Int64.to_int s)] 
                 [%e ctype ~loc t]]
-      | TComp(ci) -> evar ci.ci_name
+      | TComp(ci) -> [%expr [%e evar ci.ci_name].ctype]
       | TEnum(ei) -> ctype ~loc (TInt(ei.ei_kind))
       | TFuncPtr(fs) -> 
         if fs.fs_variadic then error ~loc "no support for variadic functions"
@@ -217,10 +215,10 @@ module Make(Clang : Coc_clang.S) = struct
           ]
 
         | GComp{ci_kind=Struct; ci_name; ci_members } ->
-          [%stri 
-            let ([%p pvar loc ci_name], [%p pvar loc (ci_name ^ "_members")]) = 
-                [%e gen_cstruct loc ci_name ci_members]
-          ]
+          [%stri let [%p pvar loc ci_name] = [%e gen_cstruct loc ci_name ci_members] ]
+
+        | GEnum{ei_name; ei_items; ei_kind} ->
+          [%stri let [%p pvar loc ei_name] = [%e gen_enum loc ei_name ei_items] ]
 
         | _ -> error ~loc "unsupported c global"
 
