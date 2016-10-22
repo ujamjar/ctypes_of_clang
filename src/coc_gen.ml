@@ -132,33 +132,41 @@ module Make(Clang : Coc_clang.S) = struct
       let sstruct = "_struct" in
       let pstruct = pvar loc sstruct in
       let ename = str ci_name in
+      let ci_members = List.rev ci_members in
       let method_ loc txt exp = 
         Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp))
       in
       
-      let map_fields f = 
-        List.map (function
-          | Field(fi) -> f fi
-          (*| CompField(ci,fi) -> gen_cstruct loc fi.fi_name ci.ci_members*)
-          | _ as x -> error ~loc "unsupported structure field %s" 
-                                    (Cparse.show_comp_member x)) 
-          (List.rev ci_members)
+      let gen_field = 
+
+        let estruct = evar sstruct in
+        function
+        | Field(fi) ->
+          fi.fi_name,
+          [%expr field [%e estruct] [%e str fi.fi_name] [%e ctype loc fi.fi_typ]],
+          method_ loc fi.fi_name (evar fi.fi_name)
+
+        | CompField(ci,fi) ->
+          let substruct = gen_cstruct loc ci.ci_name ci.ci_members in
+          fi.fi_name,
+          [%expr let [%p pvar loc fi.fi_name] = [%e substruct] in
+            { Coc_runtime.field = 
+                field [%e estruct] [%e str fi.fi_name] [%e evar fi.fi_name].ctype; 
+              structure = [%e evar fi.fi_name] }], 
+          method_ loc fi.fi_name (evar fi.fi_name)
+
+        | _ as x -> error ~loc "unsupported structure field %s" 
+                                    (Cparse.show_comp_member x)
       in
-      
-      let methods = map_fields 
-          (fun fi -> method_ loc fi.fi_name (evar fi.fi_name)) 
-      in
-      let decl_field fi l = 
-        [%expr 
-          let [%p pvar loc fi.fi_name] = 
-            field [%e evar sstruct] [%e str fi.fi_name] [%e ctype loc fi.fi_typ] in [%e l]]
-      in
-      let obj = Exp.object_ (Cstr.mk (Pat.any()) methods) in
+
+      let fields = List.map gen_field ci_members in
+      let obj = Exp.object_ (Cstr.mk (Pat.any()) (List.map (fun (_,_,m) -> m) fields)) in
 
       [%expr let [%p pstruct] : [%t typ] structure typ = structure [%e ename] in 
         [%e 
-          List.fold_right decl_field
-            (map_fields (fun fi -> fi))
+          List.fold_right 
+            (fun (n,f,_) l -> [%expr let [%p pvar loc n] = [%e f] in [%e l]])
+            fields
             [%expr let () = seal _struct in 
               { Coc_runtime.ctype=[%e evar sstruct]; members=[%e obj]; } ]
         ]

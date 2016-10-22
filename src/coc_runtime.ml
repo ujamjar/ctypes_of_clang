@@ -6,6 +6,12 @@ type ('a,'b) structure =
     members : 'b;
   }
 
+type ('a,'b,'c) substructure =
+  {
+    field : ('a Ctypes.structure, 'b Ctypes.structure) Ctypes.field;
+    structure : ('a, 'c) structure;
+  }
+
 (* enum *)
 
 type ('a,'b) enum = 
