@@ -119,7 +119,7 @@ module Make(Clang : Coc_clang.S) = struct
   and enum_info = 
     {
       ei_name : string;
-      ei_items : enum_item list;
+      mutable ei_items : enum_item list;
       ei_kind : ikind;
     }
     [@@ deriving show]
@@ -385,8 +385,8 @@ module Make(Clang : Coc_clang.S) = struct
         let visit ctx members = 
           let decl = decl_name ctx cursor in
           let ei = enuminfo decl in
-          let ei_items = visit_enum cursor ei.ei_items in
-          Enum { ei with ei_items } :: members
+          ei.ei_items <- visit_enum cursor ei.ei_items;
+          (Enum ei) :: members
         in
         fwd_decl ctx cursor visit members
       
@@ -421,8 +421,8 @@ module Make(Clang : Coc_clang.S) = struct
       let visit ctx _ = 
         let decl = decl_name ctx cursor in
         let ei = enuminfo decl in
-        let ei_items = visit_enum cursor ei.ei_items in
-        ctx.globals <- (GEnum { ei with ei_items }) :: ctx.globals;
+        ei.ei_items <- visit_enum cursor ei.ei_items;
+        ctx.globals <- (GEnum ei) :: ctx.globals;
         ctx
       in
       L.info "enum %s" (Cursor.spelling cursor);

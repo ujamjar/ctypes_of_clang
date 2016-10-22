@@ -1,15 +1,14 @@
 module Make(Clang : Coc_clang.S) : sig 
-  module Cparse : module type of Coc_parse.Make(Clang)
-  open Cparse
-  
-  type ctx
 
-  val init_ctx : global list -> ctx
+  val cfn : Location.t -> string -> Parsetree.expression
 
-  (* move to its own module and/or sub-library? *)
-  module Ppx : sig
-    val register : unit -> unit
-  end
+  val cstruct : Location.t -> string -> Parsetree.expression
+
+  val cenum : Location.t -> string -> Parsetree.expression
+
+  val ccode : Location.t -> string -> Parsetree.structure_item list
+
+  val register : unit -> unit
 
 end
 

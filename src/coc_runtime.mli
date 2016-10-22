@@ -1,14 +1,14 @@
-(** structure *)
+(** structure/union *)
 type ('a,'b) structure = 
   {
-    ctype : 'a Ctypes.structure Ctypes.typ;
+    ctype : 'a Ctypes.typ;
     members : 'b;
   }
 
-type ('a,'b,'c) substructure =
+type ('a,'b,'c,'d) substructure =
   {
-    field : ('a Ctypes.structure, 'b Ctypes.structure) Ctypes.field;
-    structure : ('a, 'c) structure;
+    field : ('a, 'b) Ctypes.field;
+    structure : ('c, 'd) structure;
   }
 
 (** enum *)
@@ -19,4 +19,9 @@ type ('a,'b) enum =
     of_int : int -> 'b;
   }
 
+type ('a,'b,'c,'d) subenum =
+  {
+    field : ('a, 'b) Ctypes.field;
+    enum : ('c, 'd) enum;
+  }
 

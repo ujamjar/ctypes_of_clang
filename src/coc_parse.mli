@@ -89,7 +89,7 @@ module Make(Clang : Coc_clang.S) : sig
   and enum_info = 
     {
       ei_name : string;
-      ei_items : enum_item list;
+      mutable ei_items : enum_item list;
       ei_kind : ikind;
     }
 
