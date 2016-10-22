@@ -17,6 +17,9 @@ open Rresult.R
 open Ctypes
 open Foreign
 
+open Parsetree
 open Ast_helper
 
+let pp_loc_t fmt (l : Location.t) = Format.fprintf fmt "<loc>";;
+#install_printer pp_loc_t;;
 #ppx "./ppx_coc.byte";;

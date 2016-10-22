@@ -1,12 +1,24 @@
 module Make(Clang : Coc_clang.S) : sig 
 
-  val cfn : Location.t -> string -> Parsetree.expression
+  module Attrs : sig
 
-  val cstruct : Location.t -> string -> Parsetree.expression
+    type t = 
+      [ `clangargs of string list ]
 
-  val cenum : Location.t -> string -> Parsetree.expression
+    val get : (string Asttypes.loc * Parsetree.payload) list -> t list
 
-  val ccode : Location.t -> string -> Parsetree.structure_item list
+    val clangargs : t list -> string list
+
+  end
+
+  val cfn : loc:Location.t -> code:string -> Parsetree.expression
+
+  val cstruct : loc:Location.t -> code:string -> Parsetree.expression
+
+  val cenum : loc:Location.t -> code:string -> Parsetree.expression
+
+  val ccode : loc:Location.t -> attrs:Attrs.t list -> code:string -> 
+    Parsetree.structure_item list
 
   val register : unit -> unit
 

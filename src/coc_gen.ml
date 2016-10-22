@@ -47,6 +47,34 @@ module Make(Clang : Coc_clang.S) = struct
     error ?loc
       "%s" (String.concat "\n" (List.map snd errors))
 
+  module Attrs = struct
+
+    type t = 
+      [ `clangargs of string list ]
+
+    let rec get = function
+      | [] -> []
+      | ({txt="clangargs";loc}, PStr [ [%stri [%e? args]] ]) :: tl -> begin
+        let rec f args = 
+          match args with
+          | [%expr []] -> []
+          | [%expr [%e? {pexp_desc=Pexp_constant(Pconst_string(h,_))}] :: [%e? t]] -> h :: f t
+          | _ -> error "clangargs: expecting list of strings"
+        in
+        `clangargs(f args) :: get tl
+      end
+      | _ :: tl -> get tl
+
+    let rec clangargs attrs = 
+      let rec f = function
+        | [] -> []
+        | `clangargs(args) :: t -> args :: f t
+        | _ :: t -> f t
+      in
+      List.concat (f attrs)
+
+  end
+
   let carrow a b = [%expr ([%e a] @-> [%e b])]
 
   let rec ctype ~loc t =
@@ -89,8 +117,9 @@ module Make(Clang : Coc_clang.S) = struct
     in
     fsig
 
-  let run loc code f = 
-    match Cparse.run ~unsaved:["coc_ppx.c",code] ["coc_ppx.c"] with
+  let run ~loc ~attrs ~code f = 
+    let clangargs = Attrs.clangargs attrs in
+    match Cparse.run ~unsaved:["coc_ppx.c",code] ("coc_ppx.c"::clangargs) with
     | Ok (g) -> f g
     | Error (errs) -> cerror ~loc errs
 
@@ -214,27 +243,27 @@ module Make(Clang : Coc_clang.S) = struct
       [%expr let [%p pstruct] : [%t typ] union typ = union [%e ename] in 
         [%e fields_and_obj ] ]
 
-  let cfn loc code = 
-    run loc code @@ function
+  let cfn ~loc ~code = 
+    run ~loc ~attrs:[] ~code @@ function
     | { globals=(GFunc {vi_name; 
                         vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
                         vi_val=None; vi_is_const=false})::_; _ } -> 
       gen_cfn loc vi_name fs_args fs_ret 
     | _ -> error ~loc "expecting function definition"
 
-  let cstruct loc code = 
-    run loc code @@ function
+  let cstruct ~loc ~code = 
+    run ~loc ~attrs:[] ~code @@ function
     | { globals=(GComp ci)::_; _ } -> 
       gen_cstruct loc ci
     | _ -> error ~loc "expecting structure definiton"
 
-  let cenum loc code = 
-    run loc code @@ function
+  let cenum ~loc ~code = 
+    run ~loc ~attrs:[] ~code @@ function
     | { globals=(GEnum{ei_name; ei_items; ei_kind})::_; _} ->
       gen_enum loc ei_name ei_items
     | _ -> error ~loc "expecting enum definition"
 
-  let ccode loc code = 
+  let ccode ~loc ~attrs ~code = 
     let gen = function
 
       | GFunc {vi_name; 
@@ -256,7 +285,7 @@ module Make(Clang : Coc_clang.S) = struct
       | _ as g -> error ~loc "unsupported c global [%s]" (Cparse.show_global g)
 
     in
-    run loc code @@ fun ctx -> List.map gen (List.rev ctx.globals)
+    run ~loc ~attrs ~code @@ fun ctx -> List.map gen (List.rev ctx.globals)
 
   let coc_mapper argv = 
 
@@ -268,29 +297,29 @@ module Make(Clang : Coc_clang.S) = struct
         (* [%cfn ...] *)
         | [%stri [%cfn let [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          [%stri let [%p binding] = [%e cfn loc code] ]
+          [%stri let [%p binding] = [%e cfn ~loc ~code] ]
 
         | [%stri let%cfn [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
-          [%stri let [%p binding] = [%e cfn loc code] ]
+          [%stri let [%p binding] = [%e cfn ~loc ~code] ]
 
         (* [%cstruct ...] *)
         | [%stri [%cstruct let [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          [%stri let [%p binding] = [%e cstruct loc code] ]
+          [%stri let [%p binding] = [%e cstruct ~loc ~code] ]
 
         | [%stri let%cstruct [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
-          [%stri let [%p binding] = [%e cstruct loc code] ]
+          [%stri let [%p binding] = [%e cstruct ~loc ~code] ]
 
         (* [%cenum ...] *)
         | [%stri [%cenum let [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          [%stri let [%p binding] = [%e cenum loc code] ]
+          [%stri let [%p binding] = [%e cenum ~loc ~code] ]
 
         | [%stri let%cenum [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
-          [%stri let [%p binding] = [%e cenum loc code] ]
+          [%stri let [%p binding] = [%e cenum ~loc ~code] ]
 
         | _ -> default_mapper.structure_item mapper stri 
 
@@ -303,32 +332,32 @@ module Make(Clang : Coc_clang.S) = struct
         (* [%cfn ...] *)
         | [%expr [%cfn [%e? 
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-            cfn loc code 
+            cfn ~loc ~code 
 
         | [%expr [%cfn let [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
             [%e? expr]]] -> 
-          [%expr let [%p binding] = [%e cfn loc code] in [%e expr]]
+          [%expr let [%p binding] = [%e cfn ~loc ~code] in [%e expr]]
 
         (* [%cstruct ...] *)
         | [%expr [%cstruct [%e? 
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          cstruct loc code
+          cstruct ~loc ~code
         
         | [%expr [%cstruct let [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
             [%e? expr]]] -> 
-          [%expr let [%p binding] = [%e cstruct loc code] in [%e expr]]
+          [%expr let [%p binding] = [%e cstruct ~loc ~code] in [%e expr]]
 
         (* [%cenum ...] *)
         | [%expr [%cenum [%e? 
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          cenum loc code
+          cenum ~loc ~code
         
         | [%expr [%cenum let [%p? binding] = [%e?
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
             [%e? expr]]] -> 
-          [%expr let [%p binding] = [%e cenum loc code] in [%e expr]]
+          [%expr let [%p binding] = [%e cenum ~loc ~code] in [%e expr]]
 
         | _ -> default_mapper.expr mapper expr 
 
@@ -340,7 +369,8 @@ module Make(Clang : Coc_clang.S) = struct
         (* [%ccode ...] *)
         | [%stri [%ccode [%e? 
             {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc; pexp_attributes}]]] :: rest -> 
-          ccode loc code @ mapper.structure mapper rest
+          let attrs = Attrs.get pexp_attributes in
+          ccode ~loc ~attrs ~code @ mapper.structure mapper rest
 
         (* module%ccode ...] *)
         | {pstr_desc =
@@ -353,9 +383,15 @@ module Make(Clang : Coc_clang.S) = struct
                     { pexp_desc = Pexp_constant (Pconst_string (code, _)); pexp_attributes}, []);
                   } ];
               }; }; } ]), [])} :: rest -> 
-            Str.module_ (Mb.mk (Location.mkloc mod_name loc) 
-              (Mod.structure @@ ccode loc code)) :: mapper.structure mapper rest
-        
+          let attrs = Attrs.get pexp_attributes in
+          Str.module_ (Mb.mk (Location.mkloc mod_name loc) 
+            (Mod.structure @@ ccode ~loc ~attrs ~code)) :: mapper.structure mapper rest
+ 
+        | [%stri [%e? {pexp_desc=Pexp_constant(Pconst_string(code,Some("ccode")));
+                       pexp_loc=loc; pexp_attributes=attrs}]] :: rest ->
+          let attrs = Attrs.get attrs in
+          ccode ~loc ~attrs ~code @ mapper.structure mapper rest
+
         | h::rest -> mapper.structure_item mapper h :: mapper.structure mapper rest
         | [] -> []
       end;
