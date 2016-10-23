@@ -11,11 +11,8 @@ module Make(Clang : Coc_clang.S) : sig
 
   end
 
-  val cfn : loc:Location.t -> code:string -> Parsetree.expression
-
-  val cstruct : loc:Location.t -> code:string -> Parsetree.expression
-
-  val cenum : loc:Location.t -> code:string -> Parsetree.expression
+  val gen_ccode : loc:Location.t -> attrs:Attrs.t list -> code:string -> 
+    (string * Parsetree.expression) list
 
   val ccode : loc:Location.t -> attrs:Attrs.t list -> code:string -> 
     Parsetree.structure_item list

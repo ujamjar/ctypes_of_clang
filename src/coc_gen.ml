@@ -243,121 +243,44 @@ module Make(Clang : Coc_clang.S) = struct
       [%expr let [%p pstruct] : [%t typ] union typ = union [%e ename] in 
         [%e fields_and_obj ] ]
 
-  let cfn ~loc ~code = 
-    run ~loc ~attrs:[] ~code @@ function
-    | { globals=(GFunc {vi_name; 
-                        vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
-                        vi_val=None; vi_is_const=false})::_; _ } -> 
-      gen_cfn loc vi_name fs_args fs_ret 
-    | _ -> error ~loc "expecting function definition"
-
-  let cstruct ~loc ~code = 
-    run ~loc ~attrs:[] ~code @@ function
-    | { globals=(GComp ci)::_; _ } -> 
-      gen_cstruct loc ci
-    | _ -> error ~loc "expecting structure definiton"
-
-  let cenum ~loc ~code = 
-    run ~loc ~attrs:[] ~code @@ function
-    | { globals=(GEnum{ei_name; ei_items; ei_kind})::_; _} ->
-      gen_enum loc ei_name ei_items
-    | _ -> error ~loc "expecting enum definition"
-
-  let ccode ~loc ~attrs ~code = 
+  let gen_ccode ~loc ~attrs ~code = 
     let gen = function
 
       | GFunc {vi_name; 
                vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
                vi_val=None; vi_is_const=false} -> 
-        [%stri
-          let [%p pvar loc vi_name] = [%e gen_cfn loc vi_name fs_args fs_ret]
-        ]
+        vi_name, gen_cfn loc vi_name fs_args fs_ret
 
       | GComp ci ->
-        [%stri let [%p pvar loc ci.ci_name] = [%e gen_cstruct loc ci] ]
+        ci.ci_name, gen_cstruct loc ci
 
       | GEnum{ei_name; ei_items; ei_kind} ->
-        [%stri let [%p pvar loc ei_name] = [%e gen_enum loc ei_name ei_items] ]
+        ei_name, gen_enum loc ei_name ei_items
 
       | GType{ti_name; ti_typ} ->
-        [%stri let [%p pvar loc ti_name] = [%e ctype loc ti_typ]]
+        ti_name, ctype loc ti_typ
         
       | _ as g -> error ~loc "unsupported c global [%s]" (Cparse.show_global g)
 
     in
     run ~loc ~attrs ~code @@ fun ctx -> List.map gen (List.rev ctx.globals)
 
+  let ccode ~loc ~attrs ~code = 
+    let code = gen_ccode ~loc ~attrs ~code in
+    List.map (fun (name,expr) -> [%stri let [%p pvar loc name] = [%e expr]]) code
+
   let coc_mapper argv = 
 
     { default_mapper with
 
-      structure_item = begin fun mapper stri -> 
-        match stri with
-
-        (* [%cfn ...] *)
-        | [%stri [%cfn let [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          [%stri let [%p binding] = [%e cfn ~loc ~code] ]
-
-        | [%stri let%cfn [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
-          [%stri let [%p binding] = [%e cfn ~loc ~code] ]
-
-        (* [%cstruct ...] *)
-        | [%stri [%cstruct let [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          [%stri let [%p binding] = [%e cstruct ~loc ~code] ]
-
-        | [%stri let%cstruct [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
-          [%stri let [%p binding] = [%e cstruct ~loc ~code] ]
-
-        (* [%cenum ...] *)
-        | [%stri [%cenum let [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          [%stri let [%p binding] = [%e cenum ~loc ~code] ]
-
-        | [%stri let%cenum [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]] -> 
-          [%stri let [%p binding] = [%e cenum ~loc ~code] ]
-
-        | _ -> default_mapper.structure_item mapper stri 
-
-      end;
-        
       expr = begin fun mapper expr -> 
 
         match expr with
 
-        (* [%cfn ...] *)
-        | [%expr [%cfn [%e? 
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-            cfn ~loc ~code 
-
-        | [%expr [%cfn let [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
-            [%e? expr]]] -> 
-          [%expr let [%p binding] = [%e cfn ~loc ~code] in [%e expr]]
-
-        (* [%cstruct ...] *)
-        | [%expr [%cstruct [%e? 
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          cstruct ~loc ~code
-        
-        | [%expr [%cstruct let [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
-            [%e? expr]]] -> 
-          [%expr let [%p binding] = [%e cstruct ~loc ~code] in [%e expr]]
-
-        (* [%cenum ...] *)
-        | [%expr [%cenum [%e? 
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}]]] -> 
-          cenum ~loc ~code
-        
-        | [%expr [%cenum let [%p? binding] = [%e?
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc}] in 
-            [%e? expr]]] -> 
-          [%expr let [%p binding] = [%e cenum ~loc ~code] in [%e expr]]
+        | {pexp_desc=Pexp_constant(Pconst_string(code,Some("ccode")));
+                       pexp_loc=loc; pexp_attributes=attrs} ->
+          let attrs = Attrs.get attrs in
+          snd @@ List.hd @@ List.rev @@ gen_ccode ~loc ~attrs ~code 
 
         | _ -> default_mapper.expr mapper expr 
 
@@ -366,27 +289,6 @@ module Make(Clang : Coc_clang.S) = struct
       structure = begin fun mapper items ->
         match items with
 
-        (* [%ccode ...] *)
-        | [%stri [%ccode [%e? 
-            {pexp_desc=Pexp_constant(Pconst_string(code,_)); pexp_loc=loc; pexp_attributes}]]] :: rest -> 
-          let attrs = Attrs.get pexp_attributes in
-          ccode ~loc ~attrs ~code @ mapper.structure mapper rest
-
-        (* module%ccode ...] *)
-        | {pstr_desc =
-          Pstr_extension
-           (({txt = "ccode" }, PStr [ { pstr_desc = Pstr_module {
-              pmb_name = {txt = mod_name; loc; };
-              pmb_expr = {
-                pmod_desc = Pmod_structure [ { 
-                  pstr_desc = Pstr_eval ( 
-                    { pexp_desc = Pexp_constant (Pconst_string (code, _)); pexp_attributes}, []);
-                  } ];
-              }; }; } ]), [])} :: rest -> 
-          let attrs = Attrs.get pexp_attributes in
-          Str.module_ (Mb.mk (Location.mkloc mod_name loc) 
-            (Mod.structure @@ ccode ~loc ~attrs ~code)) :: mapper.structure mapper rest
- 
         | [%stri [%e? {pexp_desc=Pexp_constant(Pconst_string(code,Some("ccode")));
                        pexp_loc=loc; pexp_attributes=attrs}]] :: rest ->
           let attrs = Attrs.get attrs in
