@@ -116,4 +116,10 @@ val convi : unit ptr -> int = <fun>
 - https://github.com/yallop/ocaml-bindings-generator
 - https://github.com/Yamakaky/rust-bindgen
 
+# Issues
+
+- {ccode| enum {A,B}; |ccode} as stri causes pprintast crash as it generates `let = ...` with
+  no binding name.  Such anonymous enums need a different generation strategy.
+
+- struct a { int a; } - field name same as outer structure leads to a clash in generated code.
 

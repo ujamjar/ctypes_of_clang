@@ -31,10 +31,6 @@ module Make(Clang : Coc_clang.S) = struct
       mutable globals : global list;
     }
 
-  (*and options = 
-    {
-    }*)
-
   and global = 
     | GType of type_info
     | GComp of comp_info
@@ -441,7 +437,8 @@ module Make(Clang : Coc_clang.S) = struct
         L.info "function %s" (Cursor.spelling cursor);
         Continue, ctx
       end
-    (* | VarDecl -> *)
+
+    (* | VarDecl -> XXX TODO *)
 
     | TypedefDecl ->
       let under_typ = Cursor.typedef_type cursor in
