@@ -4,19 +4,36 @@ module Make(Clang : Coc_clang.S) : sig
 
     type t = 
       {
-        clangargs : string list;
-        ctypesmodule : string;
-        foreignmodule : string;
+        mutable clangargs : string list;
+        mutable ctypesmodule : string;
+        mutable foreignmodule : string;
       }
 
     val get : (string Asttypes.loc * Parsetree.payload) list -> t 
 
   end
 
-  val gen_ccode : loc:Location.t -> attrs:Attrs.t -> code:string -> 
+  type t = 
+    {
+      (* ccode string location *)
+      loc : Location.t;
+      (* conversion attributes *)
+      attrs : Attrs.t;
+      (* generate unique let name bindings *)
+      mangle : string -> string;
+      (* mapping from types to bindings *)
+      typetbl :
+        ([ `Comp of string
+         | `Enum of string
+         | `Typedef of string ], 
+         string)
+        Hashtbl.t;
+    }
+
+  val gen_ccode : ctx:t -> code:string -> 
     (string * Parsetree.expression) list
 
-  val ccode : loc:Location.t -> attrs:Attrs.t -> code:string -> 
+  val ccode : ctx:t -> code:string -> 
     Parsetree.structure_item list
 
   val register : unit -> unit
