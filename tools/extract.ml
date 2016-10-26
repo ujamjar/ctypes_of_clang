@@ -7,9 +7,6 @@ module Clang = Coc_clang.Make(struct let from = None end)
 module Cparse = Coc_parse.Make(Clang)
 
 let clang_args = ref []
-let types = ref false
-let fns = ref false
-let re = ref ".*"
 let code = ref []
 let log_level = ref Log.WARN
 
@@ -23,9 +20,6 @@ let log_levels = [
 
 let () = Arg.(parse
   (align [
-    "-types", Set types, " write types module";
-    "-fns", Set fns, " write functions module";
-    "-re", Set_string re, " write bindings matching regular expression";
     "-code", String (fun s -> code := s :: !code), " convert given code snippet(s)";
     "-log", Symbol(List.map fst log_levels, (fun s -> log_level := List.assoc s log_levels)), 
       " logging level";
@@ -52,11 +46,73 @@ let x =
   let args = args @ (List.map fst code) in
   Cparse.run ~log:true ~unsaved:code args 
 
+let rec show_type ?(inner=false) = 
+  let open Cparse in
+  function
+  | TVoid -> "void"
+  | TInt(IBool) -> "bool"
+  | TInt(ISChar) -> "schar"
+  | TInt(IUChar) -> "uchar"
+  | TInt(IShort) -> "sshort"
+  | TInt(IUShort) -> "ushort"
+  | TInt(IInt) -> "int"
+  | TInt(IUInt) -> "uint"
+  | TInt(ILong) -> "long"
+  | TInt(IULong) -> "ulong"
+  | TInt(ILongLong) -> "llong"
+  | TInt(IULongLong) -> "ullong"
+  | TInt(IWChar) -> "wchar"
+  | TFloat(FFloat) -> "float"
+  | TFloat(FDouble) -> "double"
+  | TPtr(t,_) -> sprintf "%s*" (show_type ~inner t)
+  | TArray(t, size) -> sprintf "%s[%Li]" (show_type ~inner t) size
+  | TFuncProto (f) -> 
+    sprintf "%s (_)(%s%s)"
+      (show_type ~inner f.fs_ret) 
+      (String.concat ", " (List.map (fun (_,t) -> show_type ~inner t) f.fs_args))
+      (if f.fs_variadic then ",..." else "")
+  | TFuncPtr(f) -> 
+    sprintf "%s (*)(%s%s)"
+      (show_type ~inner f.fs_ret) 
+      (String.concat ", " (List.map (fun (_,t) -> show_type ~inner t) f.fs_args))
+      (if f.fs_variadic then ",..." else "")
+  | TNamed(t) ->
+    sprintf "%s = %s" t.ti_name (show_type ~inner t.ti_typ)
+  | TComp(ci) ->
+    let kind = function
+      | Struct -> "struct"
+      | Union -> "union"
+    in
+    let f = function
+      | Field(f) -> sprintf "%s %s" (show_type ~inner:true f.fi_typ) f.fi_name
+      | Comp(ci) -> show_type ~inner:true (TComp ci)
+      | Enum(ei) -> show_type ~inner:true (TEnum ei)
+      | CompField(ci,f) -> show_type ~inner:true (TComp ci)
+      | EnumField(ei,f) -> show_type ~inner:true (TEnum ei)
+    in
+    sprintf "%s %s { %s }"
+      (kind ci.ci_kind) ci.ci_name
+      (if inner then "" else String.concat "; " (List.map f @@ List.rev ci.ci_members));
+  | TEnum(ei) -> sprintf "enum %s" ei.ei_name
+
+let show g = 
+  let open Printf in
+  let open Cparse in
+  match g with
+  | GType(ti) -> printf "%s\n" (show_type (TNamed ti))
+  | GComp(ci) -> printf "%s\n" (show_type (TComp(ci)));
+  | GCompDecl(ci) -> printf "%s\n" (show_type (TComp(ci)));
+  | GEnum(ci) -> printf "%s\n" (show_type (TEnum(ci)));
+  | GEnumDecl(ci) -> printf "%s\n" (show_type (TEnum(ci)));
+  | GVar _ -> printf "GVar\n"
+  | GOther -> printf "GOther\n"
+  | GFunc v -> printf "%s = %s\n" v.vi_name (show_type v.vi_typ)
+
 let () = 
   match x with
   | Error _ -> L.fatal "%s" "fatal error."
   | Ok(ctx) -> begin
     L.info "%s" "Ast generation OK.";
-    L.debug "%t" (fun f -> fprintf f "%s" (Cparse.show_ctx ctx));
+    List.iter show (List.rev ctx.Cparse.globals)
   end
 

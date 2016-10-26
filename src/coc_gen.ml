@@ -4,7 +4,7 @@ module M = Map.Make(String)
 
 (* create ocaml compatible lower case identifier from C-ident. *)
 let ocaml_lid s = 
-  if s = "" then "_anonymous"
+  if s = "" then "anonymous"
   else if Char.uppercase_ascii s.[0] = s.[0] then 
     let has_lowercase s = 
       let b = ref false in
@@ -52,9 +52,7 @@ let ctypes_keywords =
     "double"; "ptr"; "array";
   ]
 
-let foreign_keywords = [ "foreign" ]
-
-let field_prefix = "_tmp_field_"
+let foreign_keywords = [ "foreign"; "funptr" ]
 
 module Make(Clang : Coc_clang.S) = struct
 
@@ -124,6 +122,16 @@ module Make(Clang : Coc_clang.S) = struct
           at_exit (fun () -> close_out logfile)
         end
 
+        | ({txt="loglevel";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          Log.set_log_level @@
+            (function
+            | "fatal" -> Log.FATAL
+            | "error" -> Log.ERROR
+            | "warn" -> Log.WARN
+            | "info" -> Log.INFO
+            | "debug" -> Log.DEBUG
+            | s -> error ~loc "unknown log level %s" s) (get_str loc args)
+
         | _ -> ()
       in
       List.iter get_attr a;
@@ -139,9 +147,13 @@ module Make(Clang : Coc_clang.S) = struct
       attrs : Attrs.t;
       mangle : string -> string;
       typetbl :
-        ([ `Comp of string
-         | `Enum of string
-         | `Typedef of string ], 
+        ([ `Type 
+         | `Comp 
+         | `CompDecl 
+         | `Enum 
+         | `EnumDecl 
+         | `Var 
+         | `Func ] * string,
          string)
         Hashtbl.t;
     }
@@ -168,9 +180,13 @@ module Make(Clang : Coc_clang.S) = struct
       with Not_found ->
         let typ,name = 
           match t with 
-          | `Comp n -> "comp", n 
-          | `Enum n -> "enum", n 
-          | `Typedef n -> "typedef", n
+          | `Type, n -> "typedef", n
+          | `Comp, n -> "comp", n
+          | `CompDecl, n -> "comp_decl", n
+          | `Enum, n -> "enum", n
+          | `EnumDecl, n -> "enum_decl", n
+          | `Var, n -> "var", n
+          | `Func, n -> "func", n
         in
         error "failed to look up type %s (%s)" name typ 
     in
@@ -191,18 +207,21 @@ module Make(Clang : Coc_clang.S) = struct
     | TFloat(FDouble) -> ctypes_evar ctx.attrs "double"
     | TPtr(t,_) -> [%expr [%e ctypes_evar ctx.attrs "ptr"] [%e ctype ~ctx t]]
     | TNamed{ti_name="__builtin_va_list"} -> ctype ~ctx (TPtr(TVoid,false))
-    | TNamed(t) -> evar (find (`Typedef (t.ti_name)))
+    | TNamed(t) -> evar (find (`Type, t.ti_name))
     | TArray(t,s) -> 
       if s = 0L then ctype ~ctx (TPtr(t,false))
       else [%expr [%e ctypes_evar ctx.attrs "array"] 
               [%e Ast_convenience.int (Int64.to_int s)] 
               [%e ctype ~ctx t]]
-    | TComp(ci) -> [%expr [%e evar (find (`Comp ci.ci_name))].ctype]
-    | TEnum(ei) -> [%expr [%e evar (find (`Enum ei.ei_name))].ctype]
+    | TComp(ci) -> evar (find (`CompDecl, ci.ci_name))
+    | TEnum(ei) -> evar (find (`EnumDecl, ei.ei_name))
     | TFuncPtr(fs) -> 
       if fs.fs_variadic then error ~loc:ctx.loc "no support for variadic functions"
-      else [%expr funptr [%e func_ctype ~ctx fs.fs_ret fs.fs_args]]
-    | TFuncProto _ -> error ~loc:ctx.loc "FIXME: TFuncProto?"
+      else [%expr [%e foreign_evar ctx.attrs "funptr"] [%e func_ctype ~ctx fs.fs_ret fs.fs_args]]
+    | TFuncProto(fs) -> 
+      (*error ~loc:ctx.loc "FIXME: TFuncProto?"*)
+      if fs.fs_variadic then error ~loc:ctx.loc "no support for variadic functions"
+      else [%expr [%e foreign_evar ctx.attrs "funptr"] [%e func_ctype ~ctx fs.fs_ret fs.fs_args]]
     | _ -> error ~loc:ctx.loc "unsupported type '%s'" (show_typ t)
 
   and func_ctype ~ctx ret args = 
@@ -260,16 +279,33 @@ module Make(Clang : Coc_clang.S) = struct
       { Coc_runtime.ctype = [%e int];
         to_int; of_int }]
 
-  let rec gen_cstruct ~ctx binding_name ci =
+  let gen_cstruct_decl ~ctx binding_name ci next = 
     let loc, attrs = ctx.loc, ctx.attrs in
-    let ci = { ci with ci_members=List.rev ci.ci_members } in
+    let ename = str ci.ci_name in
+    let pstruct = pvar loc "_ctype" in
+
     let typ = Ast_helper.Typ.variant 
         [Parsetree.Rtag(binding_name, [], true, [])] 
         Asttypes.Closed None
     in
+    let typ su = 
+      Typ.constr (ctypes_lid loc attrs "typ") 
+        [ Typ.constr (ctypes_lid loc attrs su) [ typ ] ]
+    in
+
+    match ci.ci_kind with
+    | Struct -> 
+      [%expr let [%p pstruct] : [%t typ "structure"] = [%e ctypes_evar attrs "structure"] [%e ename] in 
+        [%e next ] ]
+    | Union -> 
+      [%expr let [%p pstruct] : [%t typ "union"] = [%e ctypes_evar attrs "union"] [%e ename] in 
+        [%e next ] ]
+
+  let rec gen_cstruct ~ctx binding_name ci =
+    let loc, attrs = ctx.loc, ctx.attrs in
+    let ci = { ci with ci_members=List.rev ci.ci_members } in
     let pstruct = pvar loc "_ctype" in
     let estruct = evar "_ctype" in
-    let ename = str ci.ci_name in
     let method_ loc txt exp = Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp)) in
     
     let gen_field i = 
@@ -316,8 +352,7 @@ module Make(Clang : Coc_clang.S) = struct
             enum = [%e evar fi.fi_name] }], 
         method_ loc fi.fi_name (evar name)
 
-      | _ as x -> error ~loc "unsupported struct/union field %s" 
-                                  (Cparse.show_comp_member x)
+      | _ -> error ~loc "unsupported struct/union field" 
     in
 
     let fields = List.mapi gen_field ci.ci_members in
@@ -331,59 +366,108 @@ module Make(Clang : Coc_clang.S) = struct
         [%expr let () = [%e seal] [%e estruct] in 
           { Coc_runtime.ctype=[%e estruct]; members=[%e obj]; } ] 
     in
-    
-    let typ su = 
-      Typ.constr (ctypes_lid loc attrs "typ") 
-        [ Typ.constr (ctypes_lid loc attrs su) [ typ ] ]
+    match Hashtbl.find ctx.typetbl (`CompDecl,ci.ci_name) with
+    | ci_decl -> 
+      [%expr let [%p pstruct] = [%e evar ci_decl ] in 
+                 [%e fields_and_obj] ]
+    | exception Not_found -> (*error ~loc "couldn't find '%s'" ci.ci_name*)
+      gen_cstruct_decl ~ctx binding_name ci fields_and_obj 
+
+  let rec fmap f = function
+    | [] -> []
+    | h :: t -> 
+      (match  f h with
+      | Some(h) -> h :: fmap f t
+      | None -> fmap f t)
+
+  let unique_decls_and_bindings mangle g = 
+    let tbl = Hashtbl.create 113 in
+    let rec uniqify g = 
+        let find ((t,n) as x) =
+          if n="" then false
+          else
+            match Hashtbl.find tbl x with 
+            | _ -> true
+            | exception Not_found -> Hashtbl.add tbl x 0; false
+        in
+        let unique ((t,n) as x) h tl = if find x then uniqify tl else (x,n,h) :: uniqify tl in
+        match g with
+        | (GType {ti_name} as h) :: tl -> unique (`Type,ti_name) h tl
+        | (GComp {ci_name} as h) :: tl -> unique (`Comp,ci_name) h tl
+        | (GCompDecl {ci_name} as h) :: tl -> unique (`CompDecl,ci_name) h tl
+        | (GEnum {ei_name} as h) :: tl -> unique (`Enum,ei_name) h tl
+        | (GEnumDecl {ei_name} as h) :: tl -> unique (`EnumDecl,ei_name) h tl
+        | (GVar {vi_name} as h) :: tl -> unique (`Var,vi_name) h tl
+        | (GFunc {vi_name} as h) :: tl -> unique (`Func,vi_name) h tl
+        | GOther :: tl -> uniqify tl
+        | [] -> []
     in
 
-    match ci.ci_kind with
-    | Struct -> 
-      [%expr let [%p pstruct] : [%t typ "structure"] = [%e ctypes_evar attrs "structure"] [%e ename] in 
-        [%e fields_and_obj ] ]
-    | Union -> 
-      [%expr let [%p pstruct] : [%t typ "union"] = [%e ctypes_evar attrs "union"] [%e ename] in 
-        [%e fields_and_obj ] ]
+    let rec manglifier p = function
+      | ((t,n),m,g) :: tl when p t -> ((t,n),mangle m,g) :: manglifier p tl
+      | h :: tl -> h :: manglifier p tl
+      | [] -> []
+    in
+
+    let comp_decls = fmap (function GComp ci -> Some(GCompDecl {ci with ci_members=[]})
+                                  | GCompDecl ci -> Some(GCompDecl ci)
+                                  | _ -> None) g
+    in
+    let enum_decls = fmap (function GEnum ei -> Some(GEnumDecl {ei with ei_items=[]})
+                                  | GEnumDecl ei -> Some(GEnumDecl ei)
+                                  | _ -> None) g
+    in
+    let g = List.filter (function GCompDecl _  
+                                | GEnumDecl _ -> false 
+                                | _ -> true) g in
+    let g = List.concat [ comp_decls; enum_decls; g ] in
+
+    (* get unique declatations *)
+    let g = uniqify g in
+
+    (* mangle names in priority order - functions, types, forward decls *)
+    let g = manglifier (function `Func | `Var -> true | _ -> false) g in
+    let g = manglifier (function `Type -> true | _ -> false) g in
+    let g = manglifier (function `Comp | `Enum -> true | _ -> false) g in
+    let g = manglifier (function `CompDecl | `EnumDecl -> true | _ -> false) g in
+
+    g
 
   let gen_ccode ~ctx ~code = 
     let gen = function
 
-      | GFunc {vi_name; 
-               vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
-               vi_val=None; vi_is_const=false} -> 
-        let binding_name = ctx.mangle vi_name in
-        Some(binding_name, gen_cfn ~ctx vi_name fs_args fs_ret)
+      | _, name, GFunc { vi_name; 
+                         vi_typ=TFuncPtr { fs_args; fs_ret; fs_variadic=false };
+                         vi_val=None; vi_is_const=false } -> 
+        Some(name, gen_cfn ~ctx vi_name fs_args fs_ret)
 
-      | GComp ci ->
-        let binding_name = ctx.mangle ci.ci_name in
-        Hashtbl.add ctx.typetbl (`Comp ci.ci_name) binding_name;
-        Some(binding_name, gen_cstruct ~ctx binding_name ci)
+      | _, name, GComp ci ->
+        Some(name, gen_cstruct ~ctx name ci)
 
-      | GEnum{ei_name; ei_items; ei_kind} ->
-        let binding_name = ctx.mangle ei_name in
-        Hashtbl.add ctx.typetbl (`Enum ei_name) binding_name;
-        Some(binding_name, gen_enum ~ctx ei_items)
+      | _, name, GEnum { ei_name; ei_items; ei_kind } ->
+        Some(name, gen_enum ~ctx ei_items)
 
-      (* | GCompDecl | GEnumDecl *)
+      | _, name, GCompDecl ci ->
+        Some(name, gen_cstruct_decl ~ctx name ci (evar "_ctype"))
 
-      | GType{ti_name; ti_typ} ->
-        let binding_name = ctx.mangle ti_name in
-        Hashtbl.add ctx.typetbl (`Typedef ti_name) binding_name;
-        Some(binding_name, ctype ~ctx ti_typ)
+      | _, name, GEnumDecl ei ->
+        Some(name, ctypes_evar ctx.attrs "int")
+
+      | _, name, GType { ti_name; ti_typ } ->
+        Some(name, ctype ~ctx ti_typ)
       
       | _ when true -> None
 
-      | _ as g -> error ~loc:ctx.loc "unsupported c global [%s]" (Cparse.show_global g)
+      | (_,n),m,_ -> error ~loc:ctx.loc "unsupported c global [%s - >%s]" n m
 
     in
-    let rec map f = function 
-      | [] -> [] 
-      | h :: t -> 
-        (match f h with 
-        | None -> map f t 
-        | Some(h) -> h :: map f t)
-    in
-    run ~ctx ~code @@ fun ctx -> map gen (List.rev ctx.globals)
+
+    run ~ctx ~code @@ fun g -> 
+      let g = List.rev g.globals in
+      let g = unique_decls_and_bindings ctx.mangle g in
+      let () = List.iter (fun (x,m,g) -> Hashtbl.add ctx.typetbl x m) g in
+      fmap gen g
+
 
   let ccode ~ctx ~code = 
     let code = gen_ccode ~ctx ~code in

@@ -4,9 +4,46 @@ module Clang = Coc_clang.Make(struct let from = None end)
 module Cinfo = Coc_info.Make(Clang)
 open Cinfo
 
+let clang_args = ref []
+let code = ref []
+let log_level = ref Log.WARN
+
+let log_levels = [
+  "debug", Log.DEBUG;
+  "info", Log.INFO;
+  "warn", Log.WARN;
+  "error", Log.ERROR;
+  "fatal", Log.FATAL;
+]
+
+let () = Arg.(parse
+  (align [
+    "-code", String (fun s -> code := s :: !code), " convert given code snippet(s)";
+    "-log", Symbol(List.map fst log_levels, (fun s -> log_level := List.assoc s log_levels)), 
+      " logging level";
+    "--", Rest(fun s -> clang_args := s :: !clang_args), " clang arguments";
+  ])  
+  (fun s -> raise (Bad ("invalid parameter: " ^ s)))
+{|
+  info [options] -- [clang options] 
+|})
+
 let () = 
-  let args = List.tl @@ Array.to_list Sys.argv in
-  match run args with
+  Log.set_log_level !log_level;
+  Log.color_on ();
+  Log.set_output stdout
+
+let code = 
+  let code = List.rev !code in
+  List.mapi (fun i x -> "code_snippet" ^ string_of_int i ^ ".c", x) code
+
+let x = 
+  let args = List.rev !clang_args in
+  let args = args @ (List.map fst code) in
+  Cinfo.run ~unsaved:code args 
+
+let () = 
+  match x with
   | Error _ -> ()
   | Ok r ->
     let show x l n k t = 

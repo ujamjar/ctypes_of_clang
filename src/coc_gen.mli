@@ -23,9 +23,13 @@ module Make(Clang : Coc_clang.S) : sig
       mangle : string -> string;
       (* mapping from types to bindings *)
       typetbl :
-        ([ `Comp of string
-         | `Enum of string
-         | `Typedef of string ], 
+        ([ `Type 
+         | `Comp 
+         | `CompDecl 
+         | `Enum 
+         | `EnumDecl 
+         | `Var 
+         | `Func ] * string,
          string)
         Hashtbl.t;
     }
