@@ -380,7 +380,7 @@ module Make(Clang : Coc_clang.S) = struct
       | Some(h) -> h :: fmap f t
       | None -> fmap f t)
 
-  let unique_decls_and_bindings mangle g = 
+  let unique_globals g = 
     let tbl = Hashtbl.create 113 in
     let rec uniqify g = 
         let find ((t,n) as x) =
@@ -402,6 +402,9 @@ module Make(Clang : Coc_clang.S) = struct
         | GOther :: tl -> uniqify tl
         | [] -> []
     in
+    uniqify g
+
+  let unique_decls_and_bindings mangle g = 
 
     let rec manglifier p = function
       | ((t,n),m,g) :: tl when p t -> ((t,n),mangle m,g) :: manglifier p tl
@@ -423,7 +426,7 @@ module Make(Clang : Coc_clang.S) = struct
     let g = List.concat [ comp_decls; enum_decls; g ] in
 
     (* get unique declatations *)
-    let g = uniqify g in
+    let g = unique_globals g in
 
     (* mangle names in priority order - functions, types, forward decls *)
     let g = manglifier (function `Func | `Var -> true | _ -> false) g in
@@ -432,6 +435,64 @@ module Make(Clang : Coc_clang.S) = struct
     let g = manglifier (function `CompDecl | `EnumDecl -> true | _ -> false) g in
 
     g
+
+  let rec split_globals (fs,vs,gs) g = 
+    match g with
+    | [] -> List.(rev fs, rev vs, rev gs)
+    | GOther :: tl -> split_globals (fs,vs,gs) tl
+    | GFunc _ as h :: tl -> split_globals (h::fs,vs,gs) tl
+    | GVar { vi_val=Some _; vi_is_const=true } as h :: tl -> split_globals (fs,vs,h::gs) tl
+    | GVar _ as h :: tl -> split_globals (fs,h::vs,gs) tl
+    | _ as h :: tl -> split_globals (fs,vs,h::gs) tl
+
+  let redundant_comp_globals g = 
+    let typedefs = fmap (function GType(ti) -> Some(ti.ti_typ) | _ -> None) g in 
+    let eq g t =
+      match g,t with
+      | GComp(c1), TComp(c2) -> c1.ci_name = "" && c1 = c2
+      | GEnum(e1), TEnum(e2) -> e1.ei_name = "" && e1 = e2
+      | _ -> false
+    in
+    let eq g = List.fold_left (fun e t -> e || eq g t) false typedefs in
+    fmap (fun g -> if eq g then None else Some(g)) g
+
+  let unnamed_comp g = fmap
+    (function
+      | GType(t) as g -> begin
+          match t.ti_typ with
+          | TComp(c) when c.ci_name = ""        -> c.ci_name <- t.ti_name; None
+          | TComp(c) when c.ci_name = t.ti_name -> None
+          | TEnum(e) when e.ei_name = ""        -> e.ei_name <- t.ti_name; None
+          | TEnum(e) when e.ei_name = t.ti_name -> None
+          | _ -> Some(g)
+      end
+      | _ as g -> Some(g))
+    g
+
+  let mangle_and_typetbl ctx g = 
+    fmap 
+      (fun g ->
+        let add t n = 
+          let m = ctx.mangle n in
+          Hashtbl.add ctx.typetbl (t,n) m;
+          Some((t, n), m, g) 
+        in
+        match g with
+        | GType ti -> add `Type ti.ti_name 
+        | GComp ci  -> add `Comp ci.ci_name
+        | GCompDecl ci -> add `CompDecl ci.ci_name
+        | GEnum ei  -> add `Enum ei.ei_name
+        | GEnumDecl ei -> add `EnumDecl ei.ei_name
+        | GVar vi -> add `Var vi.vi_name
+        | GFunc vi -> add `Func vi.vi_name
+        | GOther -> None) g
+
+  let split_unique_and_unnamed ctx g = 
+    let fs,vs,gs = split_globals ([],[],[]) g in
+    let gs = redundant_comp_globals gs in
+    let gs = unnamed_comp gs in
+    let g = gs @ vs @ fs in
+    mangle_and_typetbl ctx g
 
   let gen_ccode ~ctx ~code = 
     let gen = function
@@ -464,8 +525,9 @@ module Make(Clang : Coc_clang.S) = struct
 
     run ~ctx ~code @@ fun g -> 
       let g = List.rev g.globals in
-      let g = unique_decls_and_bindings ctx.mangle g in
-      let () = List.iter (fun (x,m,g) -> Hashtbl.add ctx.typetbl x m) g in
+      (*let g = unique_decls_and_bindings ctx.mangle g in
+      let () = List.iter (fun (x,m,g) -> Hashtbl.add ctx.typetbl x m) g in*)
+      let g = split_unique_and_unnamed ctx g in
       fmap gen g
 
 

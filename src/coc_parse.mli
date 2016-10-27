@@ -75,7 +75,7 @@ module Make(Clang : Coc_clang.S) : sig
   and comp_info = 
     {
       ci_kind : comp_kind;
-      ci_name : string;
+      mutable ci_name : string;
       mutable ci_members : comp_member list;
     }
 
@@ -88,7 +88,7 @@ module Make(Clang : Coc_clang.S) : sig
 
   and enum_info = 
     {
-      ei_name : string;
+      mutable ei_name : string;
       mutable ei_items : enum_item list;
       ei_kind : ikind;
     }
