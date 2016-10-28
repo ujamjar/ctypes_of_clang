@@ -4,12 +4,13 @@
 #require "ctypes,ctypes.foreign";;
 #require "compiler-libs,ppx_tools,ppx_tools.metaquot";;
 #load "ctypes_of_clang.cma";;
+#ppx "./ppx_coc.byte";;
 
 module Clang = Coc_clang.Make(struct
   let from = Some Dl.(dlopen ~filename:"/usr/lib/llvm-3.8/lib/libclang.so" ~flags:[RTLD_NOW])
 end)
 module Cinfo = Coc_info.Make(Clang)
-module Cparse = Coc_parse.Make(Clang)
+module Cparse = Coc_parse2.Make(Clang)
 open Coc_runtime
 
 open Rresult.R
@@ -20,6 +21,103 @@ open Foreign
 open Parsetree
 open Ast_helper*)
 
+let run ?pedantic code = Cparse.run ?pedantic ~unsaved:["coc.c", code] ["coc.c"]
+
 let pp_loc_t fmt (l : Location.t) = Format.fprintf fmt "<loc>";;
 #install_printer pp_loc_t;;
-#ppx "./ppx_coc.byte";;
+
+let () = begin
+  Log.set_output stdout;
+  Log.color_on ();
+  Log.set_log_level Log.INFO;
+end
+
+let pp_members fmt ctx = 
+  Cparse.(TypeMap.iter (fun g t -> 
+      Format.fprintf fmt "%s =>\n" (name_of_global g); 
+      List.iter (fun (n,t) -> Format.fprintf fmt "  %s : %s\n" n (string_of_typ t)) t) 
+      ctx.comp_members_map);;
+
+let pp_items fmt ctx = 
+  Cparse.(TypeMap.iter (fun g t -> 
+      Format.fprintf fmt "%s =>\n" (name_of_global g); 
+      List.iter (fun (n,v) -> Format.fprintf fmt "  %s = %Li\n" n v) t) 
+      ctx.enum_items_map);;
+
+let pp_decls fmt ctx = 
+  Cparse.(List.iter (function (_,g) -> Format.fprintf fmt "%s\n" (string_of_global g)) 
+    (List.rev ctx.decls))
+
+let pp_ctx fmt ctx = 
+  pp_decls fmt ctx;
+  pp_members fmt ctx;
+  pp_items fmt ctx
+;;
+
+#install_printer pp_ctx;;
+
+let struct_test = "\
+struct a {
+  // field
+  int a;
+
+  // named, nested struct
+  struct b {
+    int b;
+  } b;
+
+  // multiply named, nested struct
+  struct c {
+    int c, d;
+  } c, d;
+
+  // unnamed, nested struct - this is skipped -Wmissing-declaration
+  struct e {
+    int e;
+  };
+
+  struct {
+    int f;
+  } f, g;
+
+  struct {
+    struct {
+      struct x {
+        int y;
+      };
+    };
+  };
+
+};
+"
+
+let weird_struct_test = "\
+// not a type declaration as no struct name.  means nothing?
+struct { 
+  int a;
+};
+
+//
+struct {
+  int b;
+} b;
+"
+
+let enum_test = "\
+enum {
+  A,B
+};
+
+enum foo {
+  x=2,y,z=5
+};
+
+struct x {
+  enum { f,g } x;
+  enum { q,w } z;
+  enum s { a,b };
+  enum s y;
+};
+
+"
+
