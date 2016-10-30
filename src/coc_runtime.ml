@@ -10,16 +10,16 @@ type ('a,'b,'c,'d) rt_structured_field =
     structure : ('c, 'd) rt_structured;
   }
 
-type 'p rt_enum = 
+type ('e,'p) rt_enum = 
   {
-    ctype : int Ctypes.typ;
-    to_int : 'p -> int;
-    of_int : int -> 'p;
+    ctype : 'e Ctypes.typ;
+    to_int : 'p -> int64;
+    of_int : int64 -> 'p;
   }
 
-type ('a,'b,'c) rt_enum_field =
+type ('a,'b,'c,'d) rt_enum_field =
   {
     field : ('a, 'b) Ctypes.field;
-    enum : 'c rt_enum;
+    enum : ('c,'d) rt_enum;
   }
 

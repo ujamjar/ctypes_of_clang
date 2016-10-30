@@ -54,5 +54,5 @@ let ctypes_keywords =
     "double"; "ptr"; "array";
   ]
 
-let foreign_keywords = [ "foreign"; "funptr" ]
+let foreign_keywords = [ "foreign"; "foreign_value"; "funptr" ]
 

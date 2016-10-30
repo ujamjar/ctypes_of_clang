@@ -39,7 +39,7 @@ let pp_members fmt ctx =
       ctx.comp_members_map);;
 
 let pp_items fmt ctx = 
-  Cparse.(TypeMap.iter (fun g t -> 
+  Cparse.(TypeMap.iter (fun g (t,_) -> 
       Format.fprintf fmt "%s =>\n" (name_of_global g); 
       List.iter (fun (n,v) -> Format.fprintf fmt "  %s = %Li\n" n v) t) 
       ctx.enum_items_map);;

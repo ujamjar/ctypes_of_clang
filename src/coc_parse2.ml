@@ -21,20 +21,16 @@ module Make(Clang : Coc_clang.S) = struct
   exception Fixme of string
   exception Expecting_composite
 
-  let anon s = "_anon_" ^ s
-  let anon_comp = anon "comp"
-  let anon_field = anon "field"
-  let anon_enum = anon "enum"
-  let anon_map = Coc_ident.init [anon_comp; anon_field; anon_enum]
-
   type global = 
-    | GComp of { loc : Loc.t; name : string; kind : kind }
-    | GEnum of { loc : Loc.t; name : string }
-    | GTypedef of { loc : Loc.t; name : string; typ : typ }
-    | GVar of { loc : Loc.t; name : string; typ : typ; is_const : bool }
-    | GFunc of { loc : Loc.t; name : string; typ : typ }
+    | GComp of { loc : Loc.t; name : name; kind : kind }
+    | GEnum of { loc : Loc.t; name : name }
+    | GTypedef of { loc : Loc.t; name : name; typ : typ }
+    | GVar of { loc : Loc.t; name : name; typ : typ; is_const : bool }
+    | GFunc of { loc : Loc.t; name : name; typ : typ }
     
   and kind = Struct | Union
+
+  and name = string * int
 
   and typ = 
     | TVoid
@@ -43,7 +39,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TArray of typ * int64
     | TPtr of typ 
     | TFuncPtr of { ret : typ; args : typ list; variadic : bool }
-    | TEnum of { global : global; items : (string * int64) list; (*kind : typ*) }
+    | TEnum of { global : global; items : (string * int64) list; kind : typ }
     | TComp of { global : global; members : (string * typ) list }
 
   let name_of_global = function
@@ -51,7 +47,7 @@ module Make(Clang : Coc_clang.S) = struct
     | GEnum {name} 
     | GTypedef {name} 
     | GVar {name} 
-    | GFunc {name} -> name
+    | GFunc {name} -> fst name
 
   let string_of_loc l = Printf.sprintf "%s:%i:%i" l.Loc.file l.Loc.line l.Loc.col
   let sloc = string_of_loc
@@ -61,15 +57,15 @@ module Make(Clang : Coc_clang.S) = struct
   let rec string_of_global =
     let open Printf in
     function
-    | GComp { loc; name; kind } -> 
+    | GComp { loc; name=(name,_); kind } -> 
       sprintf "%s %s [%s]" (string_of_kind kind) name (string_of_loc loc)
-    | GEnum { loc; name } ->
+    | GEnum { loc; name=(name,_) } ->
       sprintf "enum %s [%s]" name (string_of_loc loc)
-    | GTypedef { loc; name; typ } ->
+    | GTypedef { loc; name=(name,_); typ } ->
       sprintf "typedef %s : %s [%s]" name (string_of_typ typ)  (string_of_loc loc)
-    | GVar { loc; name; typ } ->
+    | GVar { loc; name=(name,_); typ } ->
       sprintf "var %s : %s [%s]" name (string_of_typ typ) (string_of_loc loc)
-    | GFunc { loc; name; typ } ->
+    | GFunc { loc; name=(name,_); typ } ->
       sprintf "fun %s : %s [%s]" name (string_of_typ typ) (string_of_loc loc)
 
   and string_of_typ = function
@@ -93,8 +89,8 @@ module Make(Clang : Coc_clang.S) = struct
     {
       decls : (cursor * global) list;
       comp_members_map : (string * typ) list TypeMap.t;
-      enum_items_map : (string * int64) list TypeMap.t;
-      mangler : int Coc_ident.M.t;
+      enum_items_map : ((string * int64) list * typ) TypeMap.t;
+      id : unit -> int;
     }
 
   let rec conv_typ ctx typ cursor = 
@@ -146,8 +142,14 @@ module Make(Clang : Coc_clang.S) = struct
       TComp{global; members=try TypeMap.find global ctx.comp_members_map with Not_found -> []}
     | K.EnumDecl ->
       let global = get_global () in
-      TEnum{global; items=try TypeMap.find global ctx.enum_items_map with Not_found -> []}
+      let items, kind = 
+        try TypeMap.find global ctx.enum_items_map 
+        with Not_found -> [], default_enum_type
+      in
+      TEnum{global; items; kind}
     | _ -> raise Expecting_composite
+
+  and default_enum_type = TBase "int"
 
   and conv_ptr_typ ctx typ cursor = 
     let kind = Type.kind typ in
@@ -196,10 +198,6 @@ module Make(Clang : Coc_clang.S) = struct
   let to_kind = function K.StructDecl -> Struct | K.UnionDecl -> Union 
                        | _ -> raise Invalid_composite_kind
 
-  let mangle_anon ctx a n = 
-    let mangler, n = Coc_ident.mangle ctx.mangler (if n="" then a else n) in
-    { ctx with mangler }, n
-
   let declare ~ctx ~global ~cnn_cursor ~cursor = 
     if Cursor.equal cursor cnn_cursor then 
       { ctx with decls = (cursor, global) :: ctx.decls }, global
@@ -210,9 +208,9 @@ module Make(Clang : Coc_clang.S) = struct
     if members = [] then ctx
     else { ctx with comp_members_map = TypeMap.add global members ctx.comp_members_map} 
 
-  let add_enum_items ctx global items = 
+  let add_enum_items ctx global items typ = 
     if items = [] then ctx
-    else { ctx with enum_items_map = TypeMap.add global items ctx.enum_items_map} 
+    else { ctx with enum_items_map = TypeMap.add global (items,typ) ctx.enum_items_map} 
 
   let rec visit_composite cursor _ (ctx, members, prefix) = 
 
@@ -234,7 +232,7 @@ module Make(Clang : Coc_clang.S) = struct
       let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
       L.info "nested composite '%s' [%s] [%s]" name (sloc loc) (sloc cnn_loc);
       (* declare nested global *)
-      let ctx, name = mangle_anon ctx anon_comp (prefix ^ "_" ^ name) in
+      let name = name, ctx.id() in
       let ctx, global = declare ~ctx ~global:(GComp{loc;name;kind}) ~cnn_cursor ~cursor in
       (* check for members *)
       let ctx = visit_nested_composite ctx global cursor name in
@@ -245,7 +243,7 @@ module Make(Clang : Coc_clang.S) = struct
       let cnn_cursor = Cursor.canonical cursor in
       let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
       L.info "nested enum '%s' [%s] [%s]" name (sloc loc) (sloc cnn_loc);
-      let ctx, name = mangle_anon ctx anon_enum (prefix ^ "_" ^ name) in
+      let name = name, ctx.id() in
       let ctx, global = declare ~ctx ~global:(GEnum{loc;name}) ~cnn_cursor ~cursor in
       (* check for members *)
       let ctx = visit_enum ctx global cursor name in
@@ -272,7 +270,8 @@ module Make(Clang : Coc_clang.S) = struct
              R.Continue, items)
         []
     in
-    add_enum_items ctx global (List.rev items)
+    add_enum_items ctx global (List.rev items) 
+      (conv_typ ctx (Cursor.enum_type cursor) cursor)
 
   let visit_top tunit cursor parent ctx = 
 
@@ -290,7 +289,7 @@ module Make(Clang : Coc_clang.S) = struct
       let kind = to_kind kind in
       L.info "comp '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
       (* declare the (top-level) global *)
-      let ctx, name = mangle_anon ctx anon_comp name in
+      let name = name, ctx.id() in
       let ctx, global = declare ~ctx ~global:(GComp{loc;name;kind}) ~cnn_cursor ~cursor in
       (* check for members *)
       let ctx = visit_nested_composite ctx global cursor name in
@@ -299,7 +298,7 @@ module Make(Clang : Coc_clang.S) = struct
     | K.EnumDecl ->
       L.info "enum '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
       (* declare the (top-level) global *)
-      let ctx, name = mangle_anon ctx anon_enum name in
+      let name = name, ctx.id() in
       let ctx, global = declare ~ctx ~global:(GEnum{loc;name}) ~cnn_cursor ~cursor in
       (* check for members *)
       let ctx = visit_enum ctx global cursor name in
@@ -312,6 +311,7 @@ module Make(Clang : Coc_clang.S) = struct
         L.info "func '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
         let typ = Cursor.cur_type cursor in
         let typ = conv_typ ctx typ cursor in
+        let name = name, ctx.id() in
         let ctx, _ = declare ~ctx ~global:(GFunc{loc;name;typ}) 
             ~cnn_cursor:cursor ~cursor:cursor
         in
@@ -329,6 +329,7 @@ module Make(Clang : Coc_clang.S) = struct
         let typ = Cursor.cur_type cursor in
         let is_const = Type.is_const typ in
         let typ = conv_typ ctx typ cursor in
+        let name = name, ctx.id() in
         let ctx,_ = declare ~ctx ~global:(GVar{loc;name;typ;is_const}) ~cnn_cursor:cursor ~cursor in
         R.Continue, ctx
       | _ ->
@@ -344,8 +345,9 @@ module Make(Clang : Coc_clang.S) = struct
         | _ -> under_typ
       in
       let typ = conv_typ ctx under_typ cursor in
-      let ctx, _ = declare ~ctx ~global:(GTypedef{loc;name;typ}) ~cnn_cursor:cursor ~cursor in
       L.info "typedef '%s' = %s [%s]" name (string_of_typ typ) (sloc loc);
+      let name = name, ctx.id() in
+      let ctx, _ = declare ~ctx ~global:(GTypedef{loc;name;typ}) ~cnn_cursor:cursor ~cursor in
       R.Continue, ctx
 
     | _ as kind -> 
@@ -354,10 +356,11 @@ module Make(Clang : Coc_clang.S) = struct
 
   let run ?log ?pedantic ?unsaved args = 
     let ctx = 
+      let id = let x = ref 0 in (fun () -> incr x; !x-1) in
       { decls=[]; 
         comp_members_map=TypeMap.empty; 
         enum_items_map=TypeMap.empty;
-        mangler=anon_map }
+        id }
     in
     run ?log ?pedantic ?unsaved ~args 
       (fun tu ctx -> Cursor.visit (TU.cursor tu) (visit_top tu) ctx) ctx
