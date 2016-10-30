@@ -50,69 +50,51 @@ let rec show_type ?(inner=false) =
   let open Cparse in
   function
   | TVoid -> "void"
-  | TInt(IBool) -> "bool"
-  | TInt(ISChar) -> "schar"
-  | TInt(IUChar) -> "uchar"
-  | TInt(IShort) -> "sshort"
-  | TInt(IUShort) -> "ushort"
-  | TInt(IInt) -> "int"
-  | TInt(IUInt) -> "uint"
-  | TInt(ILong) -> "long"
-  | TInt(IULong) -> "ulong"
-  | TInt(ILongLong) -> "llong"
-  | TInt(IULongLong) -> "ullong"
-  | TInt(IWChar) -> "wchar"
-  | TFloat(FFloat) -> "float"
-  | TFloat(FDouble) -> "double"
-  | TPtr(t,_) -> sprintf "%s*" (show_type ~inner t)
+  | TBase(str) -> str
+  | TPtr(t) -> sprintf "%s*" (show_type ~inner t)
   | TArray(t, size) -> sprintf "%s[%Li]" (show_type ~inner t) size
-  | TFuncProto (f) -> 
-    sprintf "%s (_)(%s%s)"
-      (show_type ~inner f.fs_ret) 
-      (String.concat ", " (List.map (fun (_,t) -> show_type ~inner t) f.fs_args))
-      (if f.fs_variadic then ",..." else "")
-  | TFuncPtr(f) -> 
+  | TFuncPtr{ret;args;variadic} -> 
     sprintf "%s (*)(%s%s)"
-      (show_type ~inner f.fs_ret) 
-      (String.concat ", " (List.map (fun (_,t) -> show_type ~inner t) f.fs_args))
-      (if f.fs_variadic then ",..." else "")
-  | TNamed(t) ->
-    sprintf "%s = %s" t.ti_name (show_type ~inner t.ti_typ)
-  | TComp(ci) ->
-    let kind = function
+      (show_type ~inner ret) 
+      (String.concat ", " (List.map (fun t -> show_type ~inner t) args))
+      (if variadic then ",..." else "")
+  | TComp{global=(GComp{name=(name,_);kind});members} ->
+    let kind = 
+      match kind with
       | Struct -> "struct"
       | Union -> "union"
     in
-    let f = function
-      | Field(f) -> sprintf "%s %s" (show_type ~inner:true f.fi_typ) f.fi_name
-      | Comp(ci) -> show_type ~inner:true (TComp ci)
-      | Enum(ei) -> show_type ~inner:true (TEnum ei)
-      | CompField(ci,f) -> show_type ~inner:true (TComp ci)
-      | EnumField(ei,f) -> show_type ~inner:true (TEnum ei)
+    let f (name,typ) = 
+      sprintf "%s %s" (show_type ~inner:true typ) name
     in
     sprintf "%s %s { %s }"
-      (kind ci.ci_kind) ci.ci_name
-      (if inner then "" else String.concat "; " (List.map f @@ List.rev ci.ci_members));
-  | TEnum(ei) -> sprintf "enum %s" ei.ei_name
+      kind name
+      (if inner then "" else String.concat "; " (List.map f members));
+  | TEnum{global} -> sprintf "enum %s" (name_of_global global)
+  | _ -> failwith "show_type"
 
-let show g = 
+let show ctx (_, g) = 
   let open Printf in
   let open Cparse in
   match g with
-  | GType(ti) -> printf "%s\n" (show_type (TNamed ti))
-  | GComp(ci) -> printf "%s\n" (show_type (TComp(ci)));
-  | GCompDecl(ci) -> printf "%s\n" (show_type (TComp(ci)));
-  | GEnum(ci) -> printf "%s\n" (show_type (TEnum(ci)));
-  | GEnumDecl(ci) -> printf "%s\n" (show_type (TEnum(ci)));
-  | GVar _ -> printf "GVar\n"
-  | GOther -> printf "GOther\n"
-  | GFunc v -> printf "%s = %s\n" v.vi_name (show_type v.vi_typ)
+  | GTypedef{name=(name,_);typ} -> printf "%s = %s\n" name (show_type typ)
+  | GComp{name;kind} -> 
+    let members=try TypeMap.find g ctx.comp_members_map with Not_found -> [] in
+    printf "%s\n" (show_type (TComp{global=g;members}));
+  | GEnum{name} -> 
+    let items, kind = 
+      try TypeMap.find g ctx.enum_items_map 
+      with Not_found -> [], default_enum_type
+    in
+    printf "%s\n" (show_type (TEnum{global=g;items;kind}));
+  | GVar {name=(name,_);typ} -> printf "%s = %s\n" name (show_type typ)
+  | GFunc {name=(name,_);typ} -> printf "%s = %s\n" name (show_type typ)
 
 let () = 
   match x with
   | Error _ -> L.fatal "%s" "fatal error."
   | Ok(ctx) -> begin
     L.info "%s" "Ast generation OK.";
-    List.iter show (List.rev ctx.Cparse.globals)
+    List.iter (show ctx) ctx.Cparse.decls
   end
 

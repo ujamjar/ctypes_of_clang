@@ -1,469 +1,372 @@
-open Coc_enums
-
 module L = Log.Make(struct let section = "parse" end)
 
-let rev_ok = function
-  | Ok l -> Ok (List.rev l)
-  | Error e -> Error e
-
 module Make(Clang : Coc_clang.S) = struct
+  open Coc_enums
   open Clang
 
-  open CXChildVisitResult
-  open CXCursorKind
-  module C = Coc_enums.CXTypeKind 
-
-  exception Coc_parse_unreachable
-  let unreachable () = raise Coc_parse_unreachable
-
-  exception Coc_parse_unsupported of string
-  let unsupported str = raise (Coc_parse_unsupported str)
+  module R = CXChildVisitResult
+  module K = CXCursorKind
+  module T = Coc_enums.CXTypeKind
 
   module CHash = Hashtbl.Make(struct
-      type t = Clang.cursor
-      let equal = Clang.Cursor.equal
-      let hash = Clang.Cursor.hash
+      type t = cursor
+      let equal = Cursor.equal
+      let hash = Cursor.hash
+  end)
+
+  exception Unhandled_composite_member
+  exception Global_not_found 
+  exception Invalid_composite_kind
+  exception Unsupported_type of string
+  exception Fixme of string
+  exception Expecting_composite
+
+  type global = 
+    | GComp of { loc : Loc.t; name : name; kind : kind }
+    | GEnum of { loc : Loc.t; name : name }
+    | GTypedef of { loc : Loc.t; name : name; typ : typ }
+    | GVar of { loc : Loc.t; name : name; typ : typ; is_const : bool }
+    | GFunc of { loc : Loc.t; name : name; typ : typ }
+    
+  and kind = Struct | Union
+
+  and name = string * int
+
+  and typ = 
+    | TVoid
+    | TBase of string
+    | TGlobal of global 
+    | TArray of typ * int64
+    | TPtr of typ 
+    | TFuncPtr of { ret : typ; args : typ list; variadic : bool }
+    | TEnum of { global : global; items : (string * int64) list; kind : typ }
+    | TComp of { global : global; members : (string * typ) list }
+
+  let name_of_global = function
+    | GComp {name} 
+    | GEnum {name} 
+    | GTypedef {name} 
+    | GVar {name} 
+    | GFunc {name} -> fst name
+
+  let string_of_loc l = Printf.sprintf "%s:%i:%i" l.Loc.file l.Loc.line l.Loc.col
+  let sloc = string_of_loc
+
+  let string_of_kind = function Union -> "union" | Struct -> "struct"
+
+  let rec string_of_global =
+    let open Printf in
+    function
+    | GComp { loc; name=(name,_); kind } -> 
+      sprintf "%s %s [%s]" (string_of_kind kind) name (string_of_loc loc)
+    | GEnum { loc; name=(name,_) } ->
+      sprintf "enum %s [%s]" name (string_of_loc loc)
+    | GTypedef { loc; name=(name,_); typ } ->
+      sprintf "typedef %s : %s [%s]" name (string_of_typ typ)  (string_of_loc loc)
+    | GVar { loc; name=(name,_); typ } ->
+      sprintf "var %s : %s [%s]" name (string_of_typ typ) (string_of_loc loc)
+    | GFunc { loc; name=(name,_); typ } ->
+      sprintf "fun %s : %s [%s]" name (string_of_typ typ) (string_of_loc loc)
+
+  and string_of_typ = function
+    | TVoid -> "void"
+    | TBase s -> s
+    | TGlobal g -> name_of_global g
+    | TArray(typ,size) -> string_of_typ typ ^ "[" ^ string_of_int (Int64.to_int size) ^ "]"
+    | TPtr typ -> string_of_typ typ ^ "*"
+    | TFuncPtr {ret; args} -> 
+      string_of_typ ret ^ " (*)(" ^
+        (String.concat ", " (List.map string_of_typ args)) ^ ")"
+    | TEnum {global} -> "enum " ^ name_of_global global
+    | TComp {global} -> "struct/union " ^ name_of_global global
+
+  module TypeMap = Map.Make(struct
+    type t = global
+    let compare = compare
   end)
 
   type ctx = 
     {
-      mutable name : global CHash.t [@printer fun fmt x -> Format.fprintf fmt "<CHash>"];
-      mutable globals : global list;
+      decls : (cursor * global) list;
+      comp_members_map : (string * typ) list TypeMap.t;
+      enum_items_map : ((string * int64) list * typ) TypeMap.t;
+      id : unit -> int;
     }
 
-  and global = 
-    | GType of type_info
-    | GComp of comp_info
-    | GCompDecl of comp_info
-    | GEnum of enum_info
-    | GEnumDecl of enum_info
-    | GVar of var_info
-    | GFunc of var_info
-    | GOther
-    [@@ deriving show]
-
-  and func_sig = 
-    {
-      fs_ret : typ;
-      fs_args : (string * typ) list;
-      fs_variadic : bool;
-    }
-    [@@ deriving show]
-
-  and typ = 
-    | TVoid
-    | TInt of ikind
-    | TFloat of fkind
-    | TPtr of typ * bool 
-    | TArray of typ * int64
-    | TFuncProto of func_sig
-    | TFuncPtr of func_sig
-    | TNamed of type_info
-    | TComp of comp_info
-    | TEnum of enum_info
-    [@@ deriving show]
-
-  and ikind = 
-    | IBool
-    | ISChar
-    | IUChar
-    | IShort
-    | IUShort
-    | IInt
-    | IUInt
-    | ILong
-    | IULong
-    | ILongLong
-    | IULongLong
-    | IWChar
-    [@@ deriving show]
-
-  and fkind = 
-    | FFloat
-    | FDouble
-    [@@ deriving show]
-  
-  and comp_member = 
-    | Field of field_info
-    | Comp of comp_info
-    | Enum of enum_info
-    | CompField of comp_info * field_info
-    | EnumField of enum_info * field_info
-    [@@ deriving show]
-
-  and comp_kind = 
-    | Struct
-    | Union
-    [@@ deriving show]
-    
-  and comp_info = 
-    {
-      ci_kind : comp_kind;
-      mutable ci_name : string;
-      mutable ci_members : comp_member list;
-    }
-    [@@ deriving show]
-
-  and field_info = 
-    {
-      fi_name : string;
-      fi_typ : typ;
-      (*fi_bitfields : (string * int) list option;*)
-    }
-    [@@ deriving show]
-
-  and enum_info = 
-    {
-      mutable ei_name : string;
-      mutable ei_items : enum_item list;
-      ei_kind : ikind;
-    }
-    [@@ deriving show]
-
-  and enum_item = 
-    {
-      eit_name : string;
-      eit_val : int64;
-    }
-    [@@ deriving show]
-
-  and type_info =
-    {
-      ti_name : string;
-      ti_typ : typ;
-    }
-    [@@ deriving show]
-
-  and var_info = 
-    {
-      vi_name : string;
-      vi_typ : typ;
-      vi_val : int64 option;
-      vi_is_const : bool;
-    }
-    [@@ deriving show]
-
-  module GSet = Set.Make(struct type t = global let compare = compare end)
-
-  let rec conv_ty ctx typ cursor = 
+  let rec conv_typ ctx typ cursor = 
     let kind = Type.kind typ in
-    let () = L.debug "conv_ty %s [%s] [%s]" 
-        (C.to_string kind)
-        (Type.name typ) (Cursor.spelling cursor) in
     match kind with
-    
-    (* base int and float types *)
-    | C.Void | C.Invalid -> TVoid
-    | C.Bool -> TInt(IBool)
-    | C.SChar | C.Char_S -> TInt(ISChar)
-    | C.UChar | C.Char_U -> TInt(IUChar)
-    | C.UShort -> TInt(IUShort)
-    | C.UInt -> TInt(IUInt)
-    | C.ULong -> TInt(IULong)
-    | C.ULongLong -> TInt(IULongLong)
-    | C.Short -> TInt(IShort)
-    | C.Int -> TInt(IInt)
-    | C.Long -> TInt(ILong)
-    | C.LongLong -> TInt(ILongLong)
-    | C.WChar -> TInt(IWChar)
-    | C.Float -> TFloat(FFloat)
-    | C.Double | C.LongDouble -> TFloat(FDouble)
-    | C.Pointer -> conv_ptr_ty ctx (Type.pointee_type typ) cursor
-    | C.VariableArray -> unreachable()
-    | C.DependentSizedArray | C.IncompleteArray ->
-      TArray(conv_ty ctx (Type.elem_type typ) cursor, 0L)
-    | C.FunctionProto | C.FunctionNoProto ->
-      let fsig = mk_fn_sig ctx typ cursor in
-      TFuncProto(fsig)
-    | C.Record | C.Typedef | C.Unexposed | C.Enum -> 
-      conv_decl_ty ctx (Type.declaration typ)
-    | C.ConstantArray -> 
-      TArray(conv_ty ctx (Type.elem_type typ) cursor, Type.array_size typ)
-    | C.Vector | C.Int128 | C.UInt128 ->
-      unsupported "128-bit integers and/or vectors are not supported"
-    | _ -> unsupported (Type.name typ)
+    | T.Void | T.Invalid -> TVoid
+    | T.SChar -> TBase("schar")
+    | T.Char_S -> TBase("char")
+    | T.UChar -> TBase("uchar")
+    | T.Char_U -> TBase("char")
+    | T.UShort -> TBase("ushort")
+    | T.UInt -> TBase("uint")
+    | T.ULong -> TBase("ulong")
+    | T.ULongLong -> TBase("ullong")
+    | T.Short -> TBase("short")
+    | T.Int -> TBase("int")
+    | T.Long -> TBase("long")
+    | T.LongLong -> TBase("llong")
+    | T.Float -> TBase("float")
+    | T.Double -> TBase("double")
+  
+    | T.FunctionProto | T.FunctionNoProto -> 
+      let ret, args, variadic = conv_func_sig ctx typ cursor in
+      TFuncPtr{ret;args;variadic}
 
-  and conv_ptr_ty ctx typ cursor = 
-    let is_const = Type.is_const typ in
-    match Type.kind typ with
-    | C.Unexposed | C.FunctionProto | C.FunctionNoProto ->
+    | T.Pointer -> conv_ptr_typ ctx (Type.pointee_type typ) cursor
+
+    | T.Record | T.Unexposed | T.Enum | T.Typedef -> conv_decl_typ ctx (Type.declaration typ) 
+
+    | T.DependentSizedArray | T.IncompleteArray ->
+      TArray(conv_typ ctx (Type.elem_type typ) cursor, 0L)
+
+    | T.ConstantArray -> 
+      TArray(conv_typ ctx (Type.elem_type typ) cursor, Type.array_size typ)
+
+    (* VariableArray, Vector, Int128, UInt128 *)
+    (* Bool, WChar, LongDouble *)
+    | _ as k -> raise (Unsupported_type (T.to_string k))
+
+  and conv_decl_typ ctx cursor = 
+    let get_global () = 
+      try global_of_cursor ctx cursor 
+      with e -> L.error "conv_decl_typ [%s]" (sloc @@ Loc.location @@ Cursor.location cursor); 
+                raise e 
+    in
+    match Cursor.kind cursor with
+    | K.StructDecl | K.UnionDecl -> 
+      let global = get_global () in
+      TComp{global; members=try TypeMap.find global ctx.comp_members_map with Not_found -> []}
+    | K.EnumDecl ->
+      let global = get_global () in
+      let items, kind = 
+        try TypeMap.find global ctx.enum_items_map 
+        with Not_found -> [], default_enum_type
+      in
+      TEnum{global; items; kind}
+    | _ -> raise Expecting_composite
+
+  and default_enum_type = TBase "int"
+
+  and conv_ptr_typ ctx typ cursor = 
+    let kind = Type.kind typ in
+    match kind with
+    | T.Unexposed | T.FunctionProto | T.FunctionNoProto ->
       let ret = Type.ret_type typ in
       let decl = Type.declaration typ in
-      if Type.kind ret <> C.Invalid then 
-        TFuncPtr(mk_fn_sig ctx typ cursor)
-      else if Cursor.kind decl <> NoDeclFound then
-        TPtr(conv_decl_ty ctx decl, is_const)
-      else if Cursor.kind cursor = VarDecl then
-        conv_ty ctx (Type.canonical_type typ) cursor
+      L.info "conv_ptr_typ: %s %s %s" 
+                      (T.to_string kind) 
+                      (T.to_string (Type.kind ret)) 
+                      (K.to_string (Cursor.kind decl));
+      if Type.kind ret <> T.Invalid then
+        let ret, args, variadic = conv_func_sig ctx typ cursor in
+        TFuncPtr{ret;args;variadic}
+      else if Cursor.kind decl <> K.NoDeclFound then
+        TPtr(conv_decl_typ ctx (Cursor.canonical decl))
+      else if Cursor.kind cursor = K.VarDecl then
+        conv_typ ctx (Type.canonical_type typ) cursor
       else
-        TPtr(TVoid, is_const)
+        TPtr(TVoid)
+    | _ -> TPtr (conv_typ ctx typ cursor)
 
-    | _ -> TPtr(conv_ty ctx typ cursor, is_const)
-
-  and mk_fn_sig ctx typ cursor = 
+  and conv_func_sig ctx typ cursor =
     let args = 
-      List.map (fun c -> Cursor.spelling c, conv_ty ctx (Cursor.cur_type c) c) @@
+      List.map (fun c -> (*Cursor.spelling c,*) conv_typ ctx (Cursor.cur_type c) c) @@
         match Cursor.kind cursor with
-        | FunctionDecl -> Array.to_list @@ Cursor.args cursor 
+        | K.FunctionDecl -> Array.to_list @@ Cursor.args cursor 
         | _ ->
           List.rev @@ Cursor.visit cursor 
             (fun c _ l -> 
               match Cursor.kind c with
-              | ParmDecl -> Continue, c::l
-              | _ -> Continue, l) []
+              | K.ParmDecl -> R.Continue, c::l
+              | _ -> R.Continue, l) []
     in
-    let ret = conv_ty ctx (Type.ret_type typ) cursor in
-    {
-      fs_args = args;
-      fs_ret = ret;
-      fs_variadic = Type.is_variadic typ;
-    }
+    let ret = conv_typ ctx (Type.ret_type typ) cursor in
+    ret, args, Type.is_variadic typ 
 
-  and conv_decl_ty ctx cursor = 
-    let kind = Cursor.kind cursor in
-    let () = L.debug "conv_decl_ty: %s" (to_string kind) in
-    match kind with
-    | StructDecl | UnionDecl -> 
-        let decl = decl_name ctx cursor in
-        let ci = compinfo decl in
-        TComp(ci)
-    | EnumDecl -> 
-        let decl = decl_name ctx cursor in
-        let ei = enuminfo decl in
-        TEnum(ei)
-    | TypedefDecl ->
-        let decl = decl_name ctx cursor in
-        let ti = typeinfo decl in
-        TNamed(ti) 
-    | _ -> TVoid
+  (* find global declaration from cursor *)
+  and global_of_cursor ctx c = 
+    let rec f = function [] -> raise Global_not_found 
+                       | (c',g)::t when Cursor.equal c c' -> g 
+                       | _ :: t -> f t 
+    in
+    f ctx.decls
 
-  and compinfo = function
-    | GComp(c) | GCompDecl(c) -> c
-    | _ -> failwith "compinfo"
-  
-  and enuminfo = function
-    | GEnum(e) | GEnumDecl(e) -> e
-    | _ -> failwith "enuminfo"
-  
-  and typeinfo = function
-    | GType(t) -> t
-    | _ -> failwith "typeinfo"
+  let to_kind = function K.StructDecl -> Struct | K.UnionDecl -> Union 
+                       | _ -> raise Invalid_composite_kind
 
-  and varinfo = function
-    | GVar(v) | GFunc(v) -> v
-    | _ -> failwith "varinfo"
-
-  and opaque_decl ctx decl = 
-    let name = decl_name ctx decl in
-    ctx.globals <- name :: ctx.globals
-
-  and fwd_decl 
-    : type a. ctx -> Clang.cursor -> (ctx -> a -> a) -> a -> a 
-    = fun ctx cursor f a -> 
-    let def = Cursor.definition cursor in
-    if Cursor.equal def cursor then f ctx a
+  let declare ~ctx ~global ~cnn_cursor ~cursor = 
+    if Cursor.equal cursor cnn_cursor then 
+      { ctx with decls = (cursor, global) :: ctx.decls }, global
     else 
-      match Cursor.kind def with
-      | NoDeclFound | InvalidFile -> opaque_decl ctx cursor; a
-      | _ -> a
+      ctx, global_of_cursor ctx cnn_cursor
 
-  and opaque_ty ctx typ = 
-    match Type.kind typ with
-    | C.Record | C.Enum -> begin
-      let decl = Type.declaration typ in
-      let def = Cursor.definition decl in
-      match Cursor.kind def with
-      | NoDeclFound | InvalidFile -> opaque_decl ctx decl
-      | _ -> ()
-      end
-    | _ -> ()
+  let add_composite_members ctx global members = 
+    if members = [] then ctx
+    else { ctx with comp_members_map = TypeMap.add global members ctx.comp_members_map} 
 
-  and decl_name ctx cursor = 
-    let cursor = Cursor.canonical cursor in
-    match CHash.find ctx.name cursor with
-    | e -> e
-    | exception Not_found ->
-      let spelling = Cursor.spelling cursor in
-      let global = 
-        match Cursor.kind cursor with
-        | StructDecl -> GCompDecl {ci_name=spelling; ci_kind=Struct; ci_members=[]}
-        | UnionDecl -> GCompDecl {ci_name=spelling; ci_kind=Union; ci_members=[]}
-        | EnumDecl ->
-          let ei_kind = 
-            match Type.kind @@ Cursor.enum_type cursor with
-            | C.SChar | C.Char_S -> ISChar
-            | C.UChar | C.Char_U -> IUChar
-            | C.UShort -> IUShort | C.UInt -> IUInt
-            | C.ULong -> IULong | C.ULongLong -> IULongLong
-            | C.Short -> IShort | C.Int -> IInt
-            | C.Long -> ILong | C.LongLong -> ILongLong
-            | _ -> IInt
-          in
-          GEnumDecl { ei_name=spelling; ei_kind; ei_items=[] }
-        | TypedefDecl ->
-          GType { ti_name=spelling; ti_typ=TVoid }
-        | VarDecl ->
-          GVar { vi_name=spelling; vi_typ=TVoid; vi_val=None; vi_is_const=false }
-        | FunctionDecl ->
-          GFunc { vi_name=spelling; vi_typ=TVoid; vi_val=None; vi_is_const=false }
-        | _ -> GOther
-      in
-      CHash.add ctx.name cursor global;
-      global
+  let add_enum_items ctx global items typ = 
+    if items = [] then ctx
+    else { ctx with enum_items_map = TypeMap.add global (items,typ) ctx.enum_items_map} 
 
-  and visit_enum cursor items =
-    Cursor.visit cursor 
-      (fun cursor _ items ->
-        match Cursor.kind cursor with
-        | EnumConstantDecl -> 
-          Continue, 
-            ({ eit_name=Cursor.spelling cursor; eit_val=Cursor.enum_val cursor }) :: items
-        | _ -> 
-          Continue, items)
-      items
-  
-  and visit_composite cursor ctx members = 
+  let rec visit_composite cursor _ (ctx, members, prefix) = 
 
-    let rec inner_composite = function
-      | TComp(ty) -> Some(ty)
-      | TPtr(ty,_) | TArray(ty,_) -> inner_composite ty
-      | _ -> None
-    in
+    let name = Cursor.spelling cursor in
+    let loc = Loc.location @@ Cursor.location cursor in
 
-    let rec inner_enumeration = function
-      | TEnum(ty) -> Some(ty)
-      | TPtr(ty,_) | TArray(ty,_) -> inner_enumeration ty
-      | _ -> None
-    in
-    
-    let members = 
-      match Cursor.kind cursor with
-      | FieldDecl -> begin
-        (* XXX bitfield stuff XXX *)
-        let name = Cursor.spelling cursor in
-        let typ = conv_ty ctx (Cursor.cur_type cursor) cursor in
-        let field = { fi_name=name; fi_typ=typ } in
-        (*let () =
-          begin match inner_composite typ with
-          | None -> L.debug "inner_composite: None"
-          | Some(c) -> L.debug "inner_composite: %s" (show_comp_info c) end;
-          begin match inner_enumeration typ with
-          | None -> L.debug "inner_enumeration: None"
-          | Some(c) -> L.debug "inner_enumeration: %s" (show_enum_info c) end;
-          begin match members with
-          | [] -> L.debug "members=[]"
-          | h::_ -> L.debug "member=%s\n" (show_comp_member h) end
-        in*)
-        match inner_composite typ, inner_enumeration typ, members with
-        | Some(c), _, ((Comp(h))::t) when h=c -> 
-          L.debug "replacing composite field";
-          (CompField(h, field)) :: t
-        | _, Some(e), ((Enum(h))::t) when h=e -> 
-          L.debug "replacing enum field";
-          (EnumField(h, field)) :: t
-        | _ -> 
-          L.debug "adding field";
-          (Field field) :: members
-      end
-      | StructDecl | UnionDecl ->
-        let visit ctx members =
-          let decl = decl_name ctx cursor in
-          let ci = compinfo decl in
-          let m = 
-            Cursor.visit cursor (fun c _ m -> visit_composite c ctx m) ci.ci_members 
-          in
-          ci.ci_members <- m;
-          (Comp ci) :: members
-        in
-        L.debug "anonymous struct";
-        fwd_decl ctx cursor visit members
-      | EnumDecl ->
-        let visit ctx members = 
-          let decl = decl_name ctx cursor in
-          let ei = enuminfo decl in
-          ei.ei_items <- visit_enum cursor ei.ei_items;
-          (Enum ei) :: members
-        in
-        fwd_decl ctx cursor visit members
-      
-      | _ ->
-        (* XXX warn - unhandled *)
-        members
-    in
-
-    Continue, members
-
-  (*and visit_literal cursor unt = (* XXX TODO *) *)
-
-  and visit_top tunit cursor _ ctx = 
     match Cursor.kind cursor with
-    | UnexposedDecl -> Recurse, ctx
-    
-    | StructDecl | UnionDecl ->
-      let visit ctx _ = 
-        let decl = decl_name ctx cursor in
-        let ci = compinfo decl in
-        let m = 
-          Cursor.visit cursor (fun c _ m -> visit_composite c ctx m) ci.ci_members
-        in
-        ci.ci_members <- m;
-        ctx.globals <- (GComp ci) :: ctx.globals;
-        ctx
-      in
-      L.info "struct/union %s" (Cursor.spelling cursor);
-      Continue, fwd_decl ctx cursor visit ctx
 
-    | EnumDecl ->
-      let visit ctx _ = 
-        let decl = decl_name ctx cursor in
-        let ei = enuminfo decl in
-        ei.ei_items <- visit_enum cursor ei.ei_items;
-        ctx.globals <- (GEnum ei) :: ctx.globals;
-        ctx
-      in
-      L.info "enum %s" (Cursor.spelling cursor);
-      Continue, fwd_decl ctx cursor visit ctx
+    (* field - need to detect nested composites/enums *)
+    | K.FieldDecl -> 
+      let typ = Cursor.cur_type cursor in
+      L.info "field '%s' [%s]" name (sloc loc);
+      R.Continue, (ctx, (name, conv_typ ctx typ cursor)::members, prefix)
 
-    | FunctionDecl ->
-      let linkage = Cursor.linkage cursor in
-      if linkage <> CXLinkageKind.External && linkage <> CXLinkageKind.UniqueExternal then begin
-        L.info "function %s invalid linkage" (Cursor.spelling cursor);
-        Continue, ctx
-      end else begin
-        let vi = varinfo @@ decl_name ctx cursor in
+    (* nested composite declaration *)
+    | K.StructDecl | K.UnionDecl as kind -> 
+      let kind = to_kind kind in
+      let cnn_cursor = Cursor.canonical cursor in
+      let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
+      L.info "nested composite '%s' [%s] [%s]" name (sloc loc) (sloc cnn_loc);
+      (* declare nested global *)
+      let name = name, ctx.id() in
+      let ctx, global = declare ~ctx ~global:(GComp{loc;name;kind}) ~cnn_cursor ~cursor in
+      (* check for members *)
+      let ctx = visit_nested_composite ctx global cursor name in
+      R.Continue, (ctx, members, prefix)
+
+    (* nested enumeration *)
+    | K.EnumDecl -> 
+      let cnn_cursor = Cursor.canonical cursor in
+      let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
+      L.info "nested enum '%s' [%s] [%s]" name (sloc loc) (sloc cnn_loc);
+      let name = name, ctx.id() in
+      let ctx, global = declare ~ctx ~global:(GEnum{loc;name}) ~cnn_cursor ~cursor in
+      (* check for members *)
+      let ctx = visit_enum ctx global cursor name in
+      R.Continue, (ctx, members, prefix)
+
+    | _ as k -> 
+      L.error "unhandled composite member type '%s'" (K.to_string k);
+      raise Unhandled_composite_member
+
+  and visit_nested_composite ctx global cursor prefix = 
+    let ctx, members, _ = Cursor.visit cursor visit_composite (ctx,[],prefix) in
+    add_composite_members ctx global (List.rev members)
+
+  and visit_enum ctx global cursor name =  
+    let items = 
+      Cursor.visit cursor 
+        (fun cursor _ items ->
+           match Cursor.kind cursor with
+           | K.EnumConstantDecl ->
+             let name = Cursor.spelling cursor in
+             let item = Cursor.enum_val cursor in
+             R.Continue, ((name,item)::items)
+           | _ ->
+             R.Continue, items)
+        []
+    in
+    add_enum_items ctx global (List.rev items) 
+      (conv_typ ctx (Cursor.enum_type cursor) cursor)
+
+  let visit_top tunit cursor parent ctx = 
+
+    let name = Cursor.spelling cursor in
+    let loc = Loc.location @@ Cursor.location cursor in
+    let cnn_cursor = Cursor.canonical cursor in
+    let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
+
+    match Cursor.kind cursor with
+    | K.UnexposedDecl -> 
+      L.warn "unexposed declaration [%s] - why does this happen?" (sloc loc);
+      R.Recurse, ctx
+
+    | K.StructDecl | K.UnionDecl as kind ->
+      let kind = to_kind kind in
+      L.info "comp '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
+      (* declare the (top-level) global *)
+      let name = name, ctx.id() in
+      let ctx, global = declare ~ctx ~global:(GComp{loc;name;kind}) ~cnn_cursor ~cursor in
+      (* check for members *)
+      let ctx = visit_nested_composite ctx global cursor name in
+      R.Continue, ctx
+   
+    | K.EnumDecl ->
+      L.info "enum '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
+      (* declare the (top-level) global *)
+      let name = name, ctx.id() in
+      let ctx, global = declare ~ctx ~global:(GEnum{loc;name}) ~cnn_cursor ~cursor in
+      (* check for members *)
+      let ctx = visit_enum ctx global cursor name in
+      R.Continue, ctx
+
+    | K.FunctionDecl -> begin
+      let open CXLinkageKind in
+      match Cursor.linkage cursor with
+      | External | UniqueExternal ->
+        L.info "func '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
         let typ = Cursor.cur_type cursor in
-        let vi_typ = TFuncPtr(mk_fn_sig ctx typ cursor) in
-        ctx.globals <- (GFunc { vi with vi_typ }) :: ctx.globals;
-        L.info "function %s" (Cursor.spelling cursor);
-        Continue, ctx
-      end
+        let typ = conv_typ ctx typ cursor in
+        let name = name, ctx.id() in
+        let ctx, _ = declare ~ctx ~global:(GFunc{loc;name;typ}) 
+            ~cnn_cursor:cursor ~cursor:cursor
+        in
+        R.Continue, ctx
+      | _ -> 
+        L.info "static func '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
+        R.Continue, ctx
+    end
 
-    (* | VarDecl -> XXX TODO *)
+    | K.VarDecl -> begin
+      let open CXLinkageKind in
+      match Cursor.linkage cursor with
+      | External | UniqueExternal ->
+        L.info "var '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
+        let typ = Cursor.cur_type cursor in
+        let is_const = Type.is_const typ in
+        let typ = conv_typ ctx typ cursor in
+        let name = name, ctx.id() in
+        let ctx,_ = declare ~ctx ~global:(GVar{loc;name;typ;is_const}) ~cnn_cursor:cursor ~cursor in
+        R.Continue, ctx
+      | _ ->
+        L.info "static var '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
+        R.Continue, ctx
+    end
 
-    | TypedefDecl ->
+    | K.TypedefDecl ->
       let under_typ = Cursor.typedef_type cursor in
       let under_typ = 
         match Type.kind under_typ with
-        | C.Unexposed -> Type.canonical_type under_typ
+        | T.Unexposed -> Type.canonical_type under_typ
         | _ -> under_typ
       in
-      let typ = conv_ty ctx under_typ cursor in
-      let ti = typeinfo @@ decl_name ctx cursor in
-      ctx.globals <- (GType { ti with ti_typ=typ }) :: ctx.globals;
-      opaque_ty ctx under_typ;
-      L.info "typedef %s -> %s" (Type.name (Cursor.cur_type cursor)) (Type.name under_typ);
-      Continue, ctx
+      let typ = conv_typ ctx under_typ cursor in
+      L.info "typedef '%s' = %s [%s]" name (string_of_typ typ) (sloc loc);
+      let name = name, ctx.id() in
+      let ctx, _ = declare ~ctx ~global:(GTypedef{loc;name;typ}) ~cnn_cursor:cursor ~cursor in
+      R.Continue, ctx
 
-    (* | MacroDefinition *)
-
-    | _ -> Continue, ctx
+    | _ as kind -> 
+      L.warn "unknown cursor kind '%s'" (K.to_string kind);
+      R.Continue, ctx
 
   let run ?log ?pedantic ?unsaved args = 
-    let ctx = { name = CHash.create 113; globals = [] } in
+    let ctx = 
+      let id = let x = ref 0 in (fun () -> incr x; !x-1) in
+      { decls=[]; 
+        comp_members_map=TypeMap.empty; 
+        enum_items_map=TypeMap.empty;
+        id }
+    in
     run ?log ?pedantic ?unsaved ~args 
-      (fun tu ctx -> Cursor.visit (TU.cursor tu) (visit_top tu) ctx) ctx
+      (fun tu ctx -> 
+        let ctx = Cursor.visit (TU.cursor tu) (visit_top tu) ctx in
+        {ctx with decls=List.rev ctx.decls}) ctx
 
 end
-
 
 

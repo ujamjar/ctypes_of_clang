@@ -1,5 +1,7 @@
 module Make(Clang : Coc_clang.S) : sig 
 
+  module Cparse : module type of Coc_parse.Make(Clang)
+
   module Attrs : sig
 
     type t = 
@@ -13,25 +15,14 @@ module Make(Clang : Coc_clang.S) : sig
 
   end
 
+  module G : Map.S with type key = Cparse.global
+
   type t = 
     {
-      (* ccode string location *)
       loc : Location.t;
-      (* conversion attributes *)
       attrs : Attrs.t;
-      (* generate unique let name bindings *)
       mangle : string -> string;
-      (* mapping from types to bindings *)
-      typetbl :
-        ([ `Type 
-         | `Comp 
-         | `CompDecl 
-         | `Enum 
-         | `EnumDecl 
-         | `Var 
-         | `Func ] * string,
-         string)
-        Hashtbl.t;
+      global_to_binding : string G.t;
     }
 
   val gen_ccode : ctx:t -> code:string -> 
