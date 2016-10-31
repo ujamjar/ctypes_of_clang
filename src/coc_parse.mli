@@ -8,6 +8,7 @@ module Make(Clang : Coc_clang.S) : sig
     | GTypedef of { loc : Loc.t; name : name; typ : typ }
     | GVar of { loc : Loc.t; name : name; typ : typ; is_const : bool }
     | GFunc of { loc : Loc.t; name : name; typ : typ }
+    | GBuiltin of { name : string; typ : typ }
     
   and kind = Struct | Union
 
@@ -36,6 +37,8 @@ module Make(Clang : Coc_clang.S) : sig
   type ctx = 
     {
       decls : (cursor * global) list;
+      globals : global list;
+      builtins : global list;
       comp_members_map : (string * typ) list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
       id : unit -> int;
@@ -43,7 +46,9 @@ module Make(Clang : Coc_clang.S) : sig
 
   val run : 
     ?log:bool -> ?pedantic:bool -> 
-    ?unsaved:(string*string) list -> string list -> 
+    ?unsaved:(string*string) list -> 
+    builtins:global list ->
+    string list -> 
     (ctx, error_msgs) result
 
 end

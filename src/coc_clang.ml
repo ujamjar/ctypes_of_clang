@@ -189,7 +189,7 @@ module Make(X : Dllib) = struct
   module File = struct
     let name = 
       let name = foreign "clang_getFileName" (file @-> returning str) in
-      Str.to_string << name
+      (fun file -> if ptr_compare null file = 0 then "???" else Str.to_string (name file))
   end
 
   type unsaved'

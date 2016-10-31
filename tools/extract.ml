@@ -9,6 +9,7 @@ module Cparse = Coc_parse.Make(Clang)
 let clang_args = ref []
 let code = ref []
 let log_level = ref Log.WARN
+let std_inc = ref false
 
 let log_levels = [
   "debug", Log.DEBUG;
@@ -23,6 +24,7 @@ let () = Arg.(parse
     "-code", String (fun s -> code := s :: !code), " convert given code snippet(s)";
     "-log", Symbol(List.map fst log_levels, (fun s -> log_level := List.assoc s log_levels)), 
       " logging level";
+    "-Istd", Set(std_inc), " include builtin clang search path";
     "--", Rest(fun s -> clang_args := s :: !clang_args), " clang arguments";
   ])  
   (fun s -> raise (Bad ("invalid parameter: " ^ s)))
@@ -44,7 +46,9 @@ let code =
 let x = 
   let args = List.rev !clang_args in
   let args = args @ (List.map fst code) in
-  Cparse.run ~log:true ~unsaved:code args 
+  let args = if !std_inc then "-I/usr/lib/clang/3.8/include" :: args else args in
+  let builtins = Cparse.[ GBuiltin{name="__builtin_va_list"; typ=TPtr(TVoid)} ] in
+  Cparse.run ~log:true ~unsaved:code ~builtins args 
 
 let rec show_type ?(inner=false) = 
   let open Cparse in
@@ -71,6 +75,7 @@ let rec show_type ?(inner=false) =
       kind name
       (if inner then "" else String.concat "; " (List.map f members));
   | TEnum{global} -> sprintf "enum %s" (name_of_global global)
+  | TGlobal global -> sprintf "global %s" (name_of_global global)
   | _ -> failwith "show_type"
 
 let show ctx (_, g) = 
@@ -89,6 +94,7 @@ let show ctx (_, g) =
     printf "%s\n" (show_type (TEnum{global=g;items;kind}));
   | GVar {name=(name,_);typ} -> printf "%s = %s\n" name (show_type typ)
   | GFunc {name=(name,_);typ} -> printf "%s = %s\n" name (show_type typ)
+  | GBuiltin {name;typ} -> printf "[builtin] %s = %s\n" name (show_type typ)
 
 let () = 
   match x with

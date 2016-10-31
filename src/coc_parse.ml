@@ -15,7 +15,7 @@ module Make(Clang : Coc_clang.S) = struct
   end)
 
   exception Unhandled_composite_member
-  exception Global_not_found 
+  exception Global_not_found of string
   exception Invalid_composite_kind
   exception Unsupported_type of string
   exception Fixme of string
@@ -27,6 +27,7 @@ module Make(Clang : Coc_clang.S) = struct
     | GTypedef of { loc : Loc.t; name : name; typ : typ }
     | GVar of { loc : Loc.t; name : name; typ : typ; is_const : bool }
     | GFunc of { loc : Loc.t; name : name; typ : typ }
+    | GBuiltin of { name : string; typ : typ }
     
   and kind = Struct | Union
 
@@ -48,6 +49,7 @@ module Make(Clang : Coc_clang.S) = struct
     | GTypedef {name} 
     | GVar {name} 
     | GFunc {name} -> fst name
+    | GBuiltin {name} -> name
 
   let string_of_loc l = Printf.sprintf "%s:%i:%i" l.Loc.file l.Loc.line l.Loc.col
   let sloc = string_of_loc
@@ -67,6 +69,8 @@ module Make(Clang : Coc_clang.S) = struct
       sprintf "var %s : %s [%s]" name (string_of_typ typ) (string_of_loc loc)
     | GFunc { loc; name=(name,_); typ } ->
       sprintf "fun %s : %s [%s]" name (string_of_typ typ) (string_of_loc loc)
+    | GBuiltin { name; typ } ->
+      sprintf "builtin %s : %s" name (string_of_typ typ) 
 
   and string_of_typ = function
     | TVoid -> "void"
@@ -88,6 +92,8 @@ module Make(Clang : Coc_clang.S) = struct
   type ctx = 
     {
       decls : (cursor * global) list;
+      globals : global list;
+      builtins : global list;
       comp_members_map : (string * typ) list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
       id : unit -> int;
@@ -111,6 +117,8 @@ module Make(Clang : Coc_clang.S) = struct
     | T.LongLong -> TBase("llong")
     | T.Float -> TBase("float")
     | T.Double -> TBase("double")
+
+    | T.LongDouble -> TBase("ldouble")
   
     | T.FunctionProto | T.FunctionNoProto -> 
       let ret, args, variadic = conv_func_sig ctx typ cursor in
@@ -132,6 +140,7 @@ module Make(Clang : Coc_clang.S) = struct
 
   and conv_decl_typ ctx cursor = 
     let get_global () = 
+      let cursor = Cursor.canonical cursor in
       try global_of_cursor ctx cursor 
       with e -> L.error "conv_decl_typ [%s]" (sloc @@ Loc.location @@ Cursor.location cursor); 
                 raise e 
@@ -147,7 +156,11 @@ module Make(Clang : Coc_clang.S) = struct
         with Not_found -> [], default_enum_type
       in
       TEnum{global; items; kind}
-    | _ -> raise Expecting_composite
+    | K.TypedefDecl ->
+      TGlobal(get_global ())
+    | _ as k -> 
+      L.warn "conv_decl_typ %s" (K.to_string k);
+      TVoid
 
   and default_enum_type = TBase "int"
 
@@ -187,13 +200,18 @@ module Make(Clang : Coc_clang.S) = struct
     let ret = conv_typ ctx (Type.ret_type typ) cursor in
     ret, args, Type.is_variadic typ 
 
-  (* find global declaration from cursor *)
+  (* find global declaration from cursor - first look at builtins *)
   and global_of_cursor ctx c = 
-    let rec f = function [] -> raise Global_not_found 
+    let cursor_name = Cursor.spelling c in
+    let rec f = function [] -> raise (Global_not_found cursor_name)
                        | (c',g)::t when Cursor.equal c c' -> g 
                        | _ :: t -> f t 
     in
-    f ctx.decls
+    let rec g = function [] -> f ctx.decls
+                       | (GBuiltin{name;typ} as g) :: t when name = cursor_name -> g
+                       | _ :: t -> g t
+    in
+    g ctx.builtins
 
   let to_kind = function K.StructDecl -> Struct | K.UnionDecl -> Union 
                        | _ -> raise Invalid_composite_kind
@@ -354,10 +372,12 @@ module Make(Clang : Coc_clang.S) = struct
       L.warn "unknown cursor kind '%s'" (K.to_string kind);
       R.Continue, ctx
 
-  let run ?log ?pedantic ?unsaved args = 
+  let run ?log ?pedantic ?unsaved ~builtins args = 
     let ctx = 
       let id = let x = ref 0 in (fun () -> incr x; !x-1) in
       { decls=[]; 
+        globals=[];
+        builtins;
         comp_members_map=TypeMap.empty; 
         enum_items_map=TypeMap.empty;
         id }

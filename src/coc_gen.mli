@@ -23,6 +23,7 @@ module Make(Clang : Coc_clang.S) : sig
       attrs : Attrs.t;
       mangle : string -> string;
       global_to_binding : string G.t;
+      builtins : Cparse.global list;
     }
 
   val gen_ccode : ctx:t -> code:string -> 

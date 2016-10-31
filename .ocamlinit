@@ -10,7 +10,7 @@ module Clang = Coc_clang.Make(struct
   let from = Some Dl.(dlopen ~filename:"/usr/lib/llvm-3.8/lib/libclang.so" ~flags:[RTLD_NOW])
 end)
 module Cinfo = Coc_info.Make(Clang)
-module Cparse = Coc_parse2.Make(Clang)
+module Cparse = Coc_parse.Make(Clang)
 open Coc_runtime
 
 open Rresult.R
