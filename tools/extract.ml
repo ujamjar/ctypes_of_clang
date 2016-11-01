@@ -54,9 +54,9 @@ let rec show_type ?(inner=false) =
   let open Cparse in
   function
   | TVoid -> "void"
-  | TBase(str) -> str
+  | TNamed(str) -> str
   | TPtr(t) -> sprintf "%s*" (show_type ~inner t)
-  | TArray(t, size) -> sprintf "%s[%Li]" (show_type ~inner t) size
+  | TArray(t, size) -> sprintf "%s[%i]" (show_type ~inner t) size
   | TFuncPtr{ret;args;variadic} -> 
     sprintf "%s (*)(%s%s)"
       (show_type ~inner ret) 
@@ -68,8 +68,11 @@ let rec show_type ?(inner=false) =
       | Struct -> "struct"
       | Union -> "union"
     in
-    let f (name,typ) = 
-      sprintf "%s %s" (show_type ~inner:true typ) name
+    let f = function
+      | Field{name;typ} ->
+        sprintf "%s %s" (show_type ~inner:true typ) name
+      | Bitfield{name;typ;width} ->
+        sprintf "%s:%i %s" (show_type ~inner:true typ) width name
     in
     sprintf "%s %s { %s }"
       kind name
@@ -83,9 +86,10 @@ let show ctx (_, g) =
   let open Cparse in
   match g with
   | GTypedef{name=(name,_);typ} -> printf "%s = %s\n" name (show_type typ)
-  | GComp{name;kind} -> 
+  | GComp{name;kind;clayout} -> 
     let members=try TypeMap.find g ctx.comp_members_map with Not_found -> [] in
-    printf "%s\n" (show_type (TComp{global=g;members}));
+    printf "%s [%i %i]\n" (show_type (TComp{global=g;members}))
+      clayout.size clayout.align;
   | GEnum{name} -> 
     let items, kind = 
       try TypeMap.find g ctx.enum_items_map 

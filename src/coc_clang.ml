@@ -64,11 +64,11 @@ module type S = sig
     val kind_name : CXTypeKind.t -> string
     val declaration : ctyp -> cursor
     val is_const : ctyp -> bool
-    val size : ctyp -> int64
-    val align : ctyp -> int64
+    val size : ctyp -> int
+    val align : ctyp -> int
     val pointee_type : ctyp -> ctyp
     val elem_type : ctyp -> ctyp
-    val array_size : ctyp -> int64
+    val array_size : ctyp -> int
     val canonical_type : ctyp -> ctyp
     val is_variadic : ctyp -> bool
     val num_args : ctyp -> int
@@ -291,15 +291,15 @@ module Make(X : Dllib) = struct
 
     let is_const = c2b "clang_isConstQualifiedType" 
 
-    let size = c2ll "clang_Type_getSizeOf" >> min0
+    let size = c2ll "clang_Type_getSizeOf" >> min0 >> Int64.to_int
 
-    let align = c2ll "clang_Type_getAlignOf" >> min0
+    let align = c2ll "clang_Type_getAlignOf" >> min0 >> Int64.to_int
 
     let pointee_type = c2c "clang_getPointeeType" 
 
     let elem_type = c2c "clang_getArrayElementType"
 
-    let array_size = c2ll "clang_getArraySize"
+    let array_size = c2ll "clang_getArraySize" >> Int64.to_int
 
     let canonical_type = c2c "clang_getCanonicalType"
 

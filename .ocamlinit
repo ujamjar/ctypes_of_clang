@@ -35,7 +35,8 @@ end
 let pp_members fmt ctx = 
   Cparse.(TypeMap.iter (fun g t -> 
       Format.fprintf fmt "%s =>\n" (name_of_global g); 
-      List.iter (fun (n,t) -> Format.fprintf fmt "  %s : %s\n" n (string_of_typ t)) t) 
+      List.iter (function Field{name;typ} | Bitfield{name;typ} -> 
+          Format.fprintf fmt "  %s : %s\n" name (string_of_typ typ)) t) 
       ctx.comp_members_map);;
 
 let pp_items fmt ctx = 

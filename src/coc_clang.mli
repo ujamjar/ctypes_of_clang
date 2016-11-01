@@ -76,11 +76,11 @@ module type S = sig
     val kind_name : CXTypeKind.t -> string
     val declaration : ctyp -> cursor
     val is_const : ctyp -> bool
-    val size : ctyp -> int64
-    val align : ctyp -> int64
+    val size : ctyp -> int
+    val align : ctyp -> int
     val pointee_type : ctyp -> ctyp
     val elem_type : ctyp -> ctyp
-    val array_size : ctyp -> int64
+    val array_size : ctyp -> int
     val canonical_type : ctyp -> ctyp
     val is_variadic : ctyp -> bool
     val num_args : ctyp -> int

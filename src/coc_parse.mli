@@ -3,7 +3,7 @@ module Make(Clang : Coc_clang.S) : sig
   open Clang
 
   type global = 
-    | GComp of { loc : Loc.t; name : name; kind : kind }
+    | GComp of { loc : Loc.t; name : name; kind : kind; clayout : clayout }
     | GEnum of { loc : Loc.t; name : name }
     | GTypedef of { loc : Loc.t; name : name; typ : typ }
     | GVar of { loc : Loc.t; name : name; typ : typ; is_const : bool }
@@ -14,15 +14,21 @@ module Make(Clang : Coc_clang.S) : sig
 
   and name = string * int
 
+  and clayout = { size : int; align : int }
+
   and typ = 
     | TVoid
-    | TBase of string
+    | TNamed of string
     | TGlobal of global 
-    | TArray of typ * int64
+    | TArray of typ * int
     | TPtr of typ 
     | TFuncPtr of { ret : typ; args : typ list; variadic : bool }
     | TEnum of { global : global; items : (string * int64) list; kind : typ }
-    | TComp of { global : global; members : (string * typ) list }
+    | TComp of { global : global; members : member list }
+
+  and member = 
+    | Field of {name:string; typ:typ}
+    | Bitfield of {name:string; typ:typ; width:int}
 
   val name_of_global : global -> string
 
@@ -39,10 +45,26 @@ module Make(Clang : Coc_clang.S) : sig
       decls : (cursor * global) list;
       globals : global list;
       builtins : global list;
-      comp_members_map : (string * typ) list TypeMap.t;
+      comp_members_map : member list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
       id : unit -> int;
     }
+
+  module BT : sig
+    val schar : typ
+    val char : typ
+    val uchar : typ
+    val ushort : typ
+    val uint : typ
+    val ulong : typ
+    val ullong : typ
+    val short : typ
+    val int : typ
+    val long : typ
+    val llong : typ
+    val float : typ
+    val double : typ
+  end
 
   val run : 
     ?log:bool -> ?pedantic:bool -> 

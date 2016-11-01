@@ -112,6 +112,8 @@ module Make(Clang : Coc_clang.S) = struct
       mangle : string -> string;
       global_to_binding : string G.t;
       builtins : global list;
+      comp_members_map : member list TypeMap.t;
+      enum_items_map : ((string * int64) list * typ) TypeMap.t;
     }
 
   let ctypes_str attrs v = 
@@ -137,20 +139,20 @@ module Make(Clang : Coc_clang.S) = struct
     in
     match t with
     | TVoid -> ctypes_evar ctx.attrs "void"
-    | TBase(t) -> ctypes_evar ctx.attrs t
+    | TNamed(t) -> evar t
     | TPtr(t) -> [%expr [%e ctypes_evar ctx.attrs "ptr"] [%e ctype ~ctx t]]
     | TArray(t,s) -> 
-      if s = 0L then ctype ~ctx (TPtr(t))
+      if s = 0 then ctype ~ctx (TPtr(t))
       else [%expr [%e ctypes_evar ctx.attrs "array"] 
-              [%e Ast_convenience.int (Int64.to_int s)] 
+              [%e Ast_convenience.int s] 
               [%e ctype ~ctx t]]
     | TComp{global} -> evar (find global)
     | TEnum{global} -> [%expr [%e evar (find global)].ctype]
     | TFuncPtr{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
-      else [%expr [%e foreign_evar ctx.attrs "funptr"] [%e func_ctype ~ctx ret args]]
+      else [%expr [%e foreign_evar ctx.attrs "funptr"] [%e func_ctype ~ctx ret args] ]
     | TGlobal(global) -> evar (find global)
-    | _ -> error ~loc:ctx.loc "unsupported type '%s'" (string_of_typ t)
+    (*| _ -> error ~loc:ctx.loc "unsupported type '%s'" (string_of_typ t)*)
 
   and func_ctype ~ctx ret args = 
     let args = if args = [] then [TVoid] else args in
@@ -170,9 +172,13 @@ module Make(Clang : Coc_clang.S) = struct
     | Error (errs) -> cerror ~loc:ctx.loc errs
 
   let gen_cfn ~ctx fs_ret vi_name fs_args = 
-    [%expr [%e foreign_evar ctx.attrs "foreign"] 
-             [%e Exp.constant (Pconst_string(vi_name,None))] 
-             [%e func_ctype ~ctx fs_ret fs_args] ]
+    [%expr
+      try
+        [%e foreign_evar ctx.attrs "foreign"] 
+               [%e Exp.constant (Pconst_string(vi_name,None))] 
+               [%e func_ctype ~ctx fs_ret fs_args]
+      with e -> (fun _ -> raise e)
+    ]
 
   let gen_cvar ~ctx name typ = 
     [%expr [%e foreign_evar ctx.attrs "foreign_value"]
@@ -269,7 +275,7 @@ module Make(Clang : Coc_clang.S) = struct
       | None -> fmap f t)
 
   let mangle_declarations ~ctx g = 
-    let g = List.map (fun (_, g) -> let name = name_of_global g in name, name, g) g in
+    let g = List.map (fun g -> let name = name_of_global g in name, name, g) g in
     
     (* mangle names for functions, vars, typedefs, structs then enums *)
     let mangle p (n,m,g) = 
@@ -287,25 +293,25 @@ module Make(Clang : Coc_clang.S) = struct
 
     g
 
-  let global_bindings_map ~loc builtins decls =
+  let global_bindings_map ~loc builtins globals =
     let map = List.fold_left 
-      (fun map -> function (GBuiltin{name} as g) -> G.add g name map
+      (fun map -> function (GBuiltin{name;typ=TNamed(oname)} as g) -> G.add g oname map
                          | _ -> error ~loc "") G.empty builtins
     in
     List.fold_left 
       (fun map -> function (n, m, (GComp _ as g)) -> G.add g n map
-                         | (n, m, (_ as g)) -> G.add g m map) map decls
+                         | (n, m, (_ as g)) -> G.add g m map) map globals
 
   let gen_ccode ~ctx ~code = 
 
-    let fwd_decl ~ctx ~c_ctx (b0, b1, global) = 
+    let fwd_decl ~ctx (b0, b1, global) = 
       match global with
       | GComp {name=(name,_); kind} -> 
         Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
 
       | GEnum { name=(name,_) } ->
         let items, kind = 
-          try TypeMap.find global c_ctx.enum_items_map with Not_found -> [], default_enum_type
+          try TypeMap.find global ctx.enum_items_map with Not_found -> [], default_enum_type
         in
         Some(b1, gen_enum ~ctx items kind)
 
@@ -315,47 +321,77 @@ module Make(Clang : Coc_clang.S) = struct
       | _ -> None
     in
 
-    let gen_decl ~ctx ~c_ctx (b0, b1, global) = 
+    let get_members ~ctx global = 
+      let aligned_array size align = 
+        if size <> 0 && align <> 0 && size >= align && size mod align = 0 then
+          match align with (* we can probably do a bit better than this. *)
+          | 1 -> [ "auto_array", TArray(Cparse.BT.char, size) ]
+          | 2 -> [ "auto_array", TArray(Cparse.BT.short, size/2) ]
+          | 4 -> [ "auto_array", TArray(Cparse.BT.int, size/4) ]
+          | 8 -> [ "auto_array", TArray(Cparse.BT.llong, size/8) ]
+          | _ -> []
+        else []
+      in
+      match global with
+      | GComp { clayout={size;align} } -> begin
+        match TypeMap.find global ctx.comp_members_map with
+        | [] -> 
+          L.warn "no members: replacing structure with array [size=%i align=%i]" size align;
+          aligned_array size align
+        | _ as members ->
+          let rec has_bitfields = 
+            function [] -> false 
+                   | Field _ :: t-> has_bitfields t
+                   | Bitfield _ :: t -> true
+          in
+          if has_bitfields members then 
+            aligned_array size align
+          else 
+            List.map (function Field{name;typ} -> name,typ
+                             | _ -> error "invalid bitfield found") members
+        | exception Not_found -> 
+          L.warn "Not_found: replacing structure with array [size=%i align=%i]" size align;
+          aligned_array size align
+      end
+      | _ -> error "get_members expecting composite"
+    in
+
+    let gen_decl ~ctx (b0, b1, global) = 
       match global with
 
       | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } -> 
         Some(b1, gen_cfn ~ctx ret name args)
 
       | GComp { name=(name,_) } ->
-        let members = 
-          try TypeMap.find global c_ctx.comp_members_map with Not_found -> [] 
-        in
+        let members = get_members ~ctx global in
         Some(b1, gen_cstruct ~ctx b0 name members)
-
-      (*| GEnum { name=(name,_) } ->
-        let items, kind = 
-          try TypeMap.find global c_ctx.enum_items_map with Not_found -> [], default_enum_type
-        in
-        Some(b1, gen_enum ~ctx items kind)
-
-      | GTypedef { name=(name,_); typ } ->
-        Some(b1, ctype ~ctx typ) (* XXX ctypedef? *) *)
      
       | GEnum _ | GTypedef _ -> None
 
       | GVar { name=(name,_); typ } -> 
         Some(b1, gen_cvar ~ctx name typ)
 
-      (*| _ when true -> None*)
-
       | _ -> error ~loc:ctx.loc "unsupported c global"
 
     in
 
     run ~ctx ~code @@ fun c_ctx -> 
-      let decls = mangle_declarations ~ctx c_ctx.decls in
-      let ctx = { ctx with global_to_binding = 
-                             global_bindings_map ~loc:ctx.loc ctx.builtins decls } in
-      fmap (fwd_decl ~ctx ~c_ctx) decls @ fmap (gen_decl ~ctx ~c_ctx) decls
+      let globals = mangle_declarations ~ctx c_ctx.globals in
+      let ctx = { ctx with 
+        global_to_binding = global_bindings_map ~loc:ctx.loc ctx.builtins globals;
+        comp_members_map = c_ctx.comp_members_map;
+        enum_items_map = c_ctx.enum_items_map;
+      } in
+      fmap (fwd_decl ~ctx) globals @ fmap (gen_decl ~ctx) globals
 
   let ccode ~ctx ~code = 
     let code = gen_ccode ~ctx ~code in
     List.map (fun (name,expr) -> [%stri let [%p pvar ctx.loc name] = [%e expr]]) code
+
+  let builtins = 
+    [ 
+      GBuiltin{name="__builtin_va_list"; typ=TNamed("Coc_runtime.__builtin_va_list")} 
+    ]
 
   let coc_mapper argv = 
     let init_ctx loc attrs = 
@@ -364,7 +400,9 @@ module Make(Clang : Coc_clang.S) = struct
         loc; attrs=Attrs.get attrs; 
         mangle = (fun s -> mangle (ocaml_lid s));
         global_to_binding = G.empty;
-        builtins=[ GBuiltin{name="__builtin_va_list"; typ=TPtr(TVoid)} ];
+        builtins;
+        comp_members_map = TypeMap.empty;
+        enum_items_map = TypeMap.empty;
       }
     in
 

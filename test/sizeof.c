@@ -14,6 +14,8 @@ struct t {
 };
 
 void main(void) {
-  printf("%lu %lu %lu %lu\n", sizeof(unsigned), sizeof(struct s), sizeof(struct t), sizeof(int));
+  printf("%lu %lu %lu %lu %lu %lu %lu\n", 
+      sizeof(unsigned), sizeof(struct s), sizeof(struct t), sizeof(int), 
+      sizeof(va_list), sizeof(long double), sizeof(__builtin_va_list));
 }
 

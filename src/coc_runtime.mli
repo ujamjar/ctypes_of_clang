@@ -23,3 +23,7 @@ type ('a,'b,'c,'d) rt_enum_field =
     enum : ('c,'d) rt_enum;
   }
 
+val __builtin_va_list : [`__builtin_va_list] Ctypes.structure Ctypes.typ
+
+val ldouble : [`ldouble] Ctypes.structure Ctypes.typ
+
