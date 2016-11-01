@@ -42,6 +42,9 @@ module Make(Clang : Coc_clang.S) = struct
         mutable clangargs : string list;
         mutable ctypesmodule : string;
         mutable foreignmodule : string;
+        mutable typesmodule : string;
+        mutable onlytypes : bool;
+        mutable onlydecls : bool;
       }
 
     let get_str loc = function
@@ -60,6 +63,9 @@ module Make(Clang : Coc_clang.S) = struct
           clangargs = [];
           ctypesmodule = "Ctypes";
           foreignmodule = "Foreign";
+          onlytypes = false;
+          onlydecls = false;
+          typesmodule = "";
         }
       in
       let rec get_attr = function
@@ -72,6 +78,15 @@ module Make(Clang : Coc_clang.S) = struct
 
         | ({txt="foreignmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.foreignmodule <- get_str loc args
+
+        | ({txt="onlytypes";loc}, _) -> 
+          attrs.onlytypes <- true;
+
+        | ({txt="onlydecls";loc}, _) -> 
+          attrs.onlydecls <- true;
+
+        | ({txt="typesmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.typesmodule <- get_str loc args
 
         | ({txt="logfile";loc}, PStr [ [%stri [%e? args]] ]) -> begin
           let logfile = open_out (get_str loc args) in
@@ -124,10 +139,17 @@ module Make(Clang : Coc_clang.S) = struct
     if attrs.foreignmodule = "" then v
     else (attrs.foreignmodule ^ "." ^ v)
 
+  let types_str attrs v = 
+    if attrs.typesmodule = "" then v
+    else (attrs.typesmodule ^ "." ^ v)
+
   let ctypes_evar attrs v = evar (ctypes_str attrs v)
   let foreign_evar attrs v = evar (foreign_str attrs v)
+  let types_evar attrs v = evar (types_str attrs v)
+
   let ctypes_lid loc attrs v = Location.mkloc (Longident.parse (ctypes_str attrs v)) loc
   let foreign_lid loc attrs v = Location.mkloc (Longident.parse (foreign_str attrs v)) loc
+  let foreign_lid loc attrs v = Location.mkloc (Longident.parse (types_str attrs v)) loc
 
   (*let carrow a b = [%expr ([%e a] @-> [%e b])]*)
   let carrow ~attrs a b = [%expr ([%e ctypes_evar attrs "@->"] [%e a] [%e b])]
@@ -302,6 +324,46 @@ module Make(Clang : Coc_clang.S) = struct
       (fun map -> function (n, m, (GComp _ as g)) -> G.add g n map
                          | (n, m, (_ as g)) -> G.add g m map) map globals
 
+  let get_members ~ctx global = 
+    let aligned_array size align = 
+      if size <> 0 && align <> 0 && size >= align && size mod align = 0 then
+        match align with (* we can probably do a bit better than this. *)
+        | 1 -> [ "auto_array", TArray(Cparse.BT.char, size) ]
+        | 2 -> [ "auto_array", TArray(Cparse.BT.short, size/2) ]
+        | 4 -> [ "auto_array", TArray(Cparse.BT.int, size/4) ]
+        | 8 -> [ "auto_array", TArray(Cparse.BT.llong, size/8) ]
+        | _ -> []
+      else []
+    in
+    match global with
+    | GComp { clayout={size;align} } -> begin
+      match TypeMap.find global ctx.comp_members_map with
+      | [] -> 
+        L.warn "no members: replacing structure with array [size=%i align=%i]" size align;
+        aligned_array size align
+      | _ as members ->
+        let rec has_bitfields = 
+          function [] -> false 
+                 | Field _ :: t-> has_bitfields t
+                 | Bitfield _ :: t -> true
+        in
+        if has_bitfields members then 
+          aligned_array size align
+        else 
+          List.map (function Field{name;typ} -> name,typ
+                           | _ -> error "invalid bitfield found") members
+      | exception Not_found -> 
+        L.warn "Not_found: replacing structure with array [size=%i align=%i]" size align;
+        aligned_array size align
+    end
+    | _ -> error "get_members expecting composite"
+   
+  let get_enum_items ~ctx global = 
+    try 
+      TypeMap.find global ctx.enum_items_map 
+    with Not_found -> 
+      [], default_enum_type
+
   let gen_ccode ~ctx ~code = 
 
     let fwd_decl ~ctx (b0, b1, global) = 
@@ -310,69 +372,33 @@ module Make(Clang : Coc_clang.S) = struct
         Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
 
       | GEnum { name=(name,_) } ->
-        let items, kind = 
-          try TypeMap.find global ctx.enum_items_map with Not_found -> [], default_enum_type
-        in
+        let items, kind = get_enum_items ~ctx global in
         Some(b1, gen_enum ~ctx items kind)
 
       | GTypedef { name=(name,_); typ } ->
         Some(b1, ctype ~ctx typ) (* XXX ctypedef? *)
      
-      | _ -> None
-    in
+      | GVar _ | GFunc _ -> None
 
-    let get_members ~ctx global = 
-      let aligned_array size align = 
-        if size <> 0 && align <> 0 && size >= align && size mod align = 0 then
-          match align with (* we can probably do a bit better than this. *)
-          | 1 -> [ "auto_array", TArray(Cparse.BT.char, size) ]
-          | 2 -> [ "auto_array", TArray(Cparse.BT.short, size/2) ]
-          | 4 -> [ "auto_array", TArray(Cparse.BT.int, size/4) ]
-          | 8 -> [ "auto_array", TArray(Cparse.BT.llong, size/8) ]
-          | _ -> []
-        else []
-      in
-      match global with
-      | GComp { clayout={size;align} } -> begin
-        match TypeMap.find global ctx.comp_members_map with
-        | [] -> 
-          L.warn "no members: replacing structure with array [size=%i align=%i]" size align;
-          aligned_array size align
-        | _ as members ->
-          let rec has_bitfields = 
-            function [] -> false 
-                   | Field _ :: t-> has_bitfields t
-                   | Bitfield _ :: t -> true
-          in
-          if has_bitfields members then 
-            aligned_array size align
-          else 
-            List.map (function Field{name;typ} -> name,typ
-                             | _ -> error "invalid bitfield found") members
-        | exception Not_found -> 
-          L.warn "Not_found: replacing structure with array [size=%i align=%i]" size align;
-          aligned_array size align
-      end
-      | _ -> error "get_members expecting composite"
+      | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
     in
 
     let gen_decl ~ctx (b0, b1, global) = 
       match global with
 
-      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } -> 
-        Some(b1, gen_cfn ~ctx ret name args)
-
       | GComp { name=(name,_) } ->
         let members = get_members ~ctx global in
         Some(b1, gen_cstruct ~ctx b0 name members)
      
-      | GEnum _ | GTypedef _ -> None
-
       | GVar { name=(name,_); typ } -> 
         Some(b1, gen_cvar ~ctx name typ)
 
-      | _ -> error ~loc:ctx.loc "unsupported c global"
+      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } -> 
+        Some(b1, gen_cfn ~ctx ret name args)
 
+      | GEnum _ | GTypedef _ | GFunc _ -> None
+
+      | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
     in
 
     run ~ctx ~code @@ fun c_ctx -> 

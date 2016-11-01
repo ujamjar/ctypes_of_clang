@@ -9,6 +9,9 @@ module Make(Clang : Coc_clang.S) : sig
         mutable clangargs : string list;
         mutable ctypesmodule : string;
         mutable foreignmodule : string;
+        mutable typesmodule : string;
+        mutable onlytypes : bool;
+        mutable onlydecls : bool;
       }
 
     val get : (string Asttypes.loc * Parsetree.payload) list -> t 
