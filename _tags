@@ -8,3 +8,5 @@
 <src/{coc_clang,coc_runtime}.{ml,mli}>: package(ctypes.foreign)
 <tools/*.{ml,mli,byte}>: package(ctypes.foreign), package(ppx_deriving.runtime), clang
 <tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools)
+
+"test": -traverse

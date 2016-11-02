@@ -43,8 +43,8 @@ module Make(Clang : Coc_clang.S) = struct
         mutable ctypesmodule : string;
         mutable foreignmodule : string;
         mutable typesmodule : string;
-        mutable onlytypes : bool;
-        mutable onlydecls : bool;
+        mutable gentypes : bool;
+        mutable gendecls : bool;
       }
 
     let get_str loc = function
@@ -63,9 +63,9 @@ module Make(Clang : Coc_clang.S) = struct
           clangargs = [];
           ctypesmodule = "Ctypes";
           foreignmodule = "Foreign";
-          onlytypes = false;
-          onlydecls = false;
           typesmodule = "";
+          gentypes = true;
+          gendecls = true;
         }
       in
       let rec get_attr = function
@@ -79,14 +79,14 @@ module Make(Clang : Coc_clang.S) = struct
         | ({txt="foreignmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.foreignmodule <- get_str loc args
 
-        | ({txt="onlytypes";loc}, _) -> 
-          attrs.onlytypes <- true;
-
-        | ({txt="onlydecls";loc}, _) -> 
-          attrs.onlydecls <- true;
-
         | ({txt="typesmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.typesmodule <- get_str loc args
+
+        | ({txt="onlytypes";loc}, _) -> 
+          attrs.gendecls <- false;
+
+        | ({txt="onlydecls";loc}, _) -> 
+          attrs.gentypes <- false;
 
         | ({txt="logfile";loc}, PStr [ [%stri [%e? args]] ]) -> begin
           let logfile = open_out (get_str loc args) in
@@ -147,9 +147,8 @@ module Make(Clang : Coc_clang.S) = struct
   let foreign_evar attrs v = evar (foreign_str attrs v)
   let types_evar attrs v = evar (types_str attrs v)
 
-  let ctypes_lid loc attrs v = Location.mkloc (Longident.parse (ctypes_str attrs v)) loc
-  let foreign_lid loc attrs v = Location.mkloc (Longident.parse (foreign_str attrs v)) loc
-  let foreign_lid loc attrs v = Location.mkloc (Longident.parse (types_str attrs v)) loc
+  let lid loc v = Location.mkloc (Longident.parse v) loc
+  let ctypes_lid loc attrs v =  lid loc (ctypes_str attrs v)
 
   (*let carrow a b = [%expr ([%e a] @-> [%e b])]*)
   let carrow ~attrs a b = [%expr ([%e ctypes_evar attrs "@->"] [%e a] [%e b])]
@@ -161,6 +160,7 @@ module Make(Clang : Coc_clang.S) = struct
     in
     match t with
     | TVoid -> ctypes_evar ctx.attrs "void"
+    | TBase(t) -> ctypes_evar ctx.attrs t
     | TNamed(t) -> evar t
     | TPtr(t) -> [%expr [%e ctypes_evar ctx.attrs "ptr"] [%e ctype ~ctx t]]
     | TArray(t,s) -> 
@@ -168,12 +168,12 @@ module Make(Clang : Coc_clang.S) = struct
       else [%expr [%e ctypes_evar ctx.attrs "array"] 
               [%e Ast_convenience.int s] 
               [%e ctype ~ctx t]]
-    | TComp{global} -> evar (find global)
-    | TEnum{global} -> [%expr [%e evar (find global)].ctype]
+    | TComp{global} -> types_evar ctx.attrs (find global)
+    | TEnum{global} -> [%expr [%e types_evar ctx.attrs (find global)].ctype]
     | TFuncPtr{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
-      else [%expr [%e foreign_evar ctx.attrs "funptr"] [%e func_ctype ~ctx ret args] ]
-    | TGlobal(global) -> evar (find global)
+      else [%expr [%e ctypes_evar ctx.attrs "static_funptr"] [%e func_ctype ~ctx ret args] ]
+    | TGlobal(global) -> types_evar ctx.attrs (find global)
     (*| _ -> error ~loc:ctx.loc "unsupported type '%s'" (string_of_typ t)*)
 
   and func_ctype ~ctx ret args = 
@@ -251,7 +251,7 @@ module Make(Clang : Coc_clang.S) = struct
     in
     let typ su = 
       Typ.constr (ctypes_lid loc attrs "typ") 
-        [ Typ.constr (ctypes_lid loc attrs su) [ typ ] ]
+        [ Typ.constr (lid loc ("Ctypes." ^ su)) [ typ ] ]
     in
 
     match kind with
@@ -267,13 +267,14 @@ module Make(Clang : Coc_clang.S) = struct
     let estruct = evar binding_name in
     let method_ loc txt exp = Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp)) in
     
+    let mangle = Coc_ident.make initial_mangler in
     let gen_field i = 
       let field = ctypes_evar attrs "field" in
       fun (n,t) ->
         let name = "field_" ^ string_of_int i in
         name,
         [%expr [%e field] [%e estruct] [%e str n] [%e ctype ~ctx t]],
-        method_ loc n (evar name)
+        method_ loc (mangle n) (evar name)
     in
 
     let fields = List.mapi gen_field members in
@@ -367,38 +368,43 @@ module Make(Clang : Coc_clang.S) = struct
   let gen_ccode ~ctx ~code = 
 
     let fwd_decl ~ctx (b0, b1, global) = 
-      match global with
-      | GComp {name=(name,_); kind} -> 
-        Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
+      if not ctx.attrs.gentypes then None
+      else
+        match global with
+        | GComp {name=(name,_); kind} -> 
+          Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
 
-      | GEnum { name=(name,_) } ->
-        let items, kind = get_enum_items ~ctx global in
-        Some(b1, gen_enum ~ctx items kind)
+        | GEnum { name=(name,_) } ->
+          let items, kind = get_enum_items ~ctx global in
+          Some(b1, gen_enum ~ctx items kind)
 
-      | GTypedef { name=(name,_); typ } ->
-        Some(b1, ctype ~ctx typ) (* XXX ctypedef? *)
-     
-      | GVar _ | GFunc _ -> None
+        | GTypedef { name=(name,_); typ } ->
+          Some(b1, ctype ~ctx typ) (* XXX ctypedef? *)
+       
+        | GVar _ | GFunc _ -> None
 
-      | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
+        | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
+
     in
 
     let gen_decl ~ctx (b0, b1, global) = 
       match global with
 
-      | GComp { name=(name,_) } ->
+      | GComp { name=(name,_) } when ctx.attrs.gentypes ->
         let members = get_members ~ctx global in
         Some(b1, gen_cstruct ~ctx b0 name members)
      
-      | GVar { name=(name,_); typ } -> 
+      | GVar { name=(name,_); typ } when ctx.attrs.gendecls -> 
         Some(b1, gen_cvar ~ctx name typ)
 
-      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } -> 
+      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } when ctx.attrs.gendecls -> 
         Some(b1, gen_cfn ~ctx ret name args)
 
       | GEnum _ | GTypedef _ | GFunc _ -> None
 
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
+
+      | _ -> None
     in
 
     run ~ctx ~code @@ fun c_ctx -> 

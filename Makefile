@@ -2,7 +2,7 @@
 all: lib tools 
 
 lib:
-	ocamlbuild ctypes_of_clang.cma
+	ocamlbuild ctypes_of_clang.cma ctypes_of_clang.cmxa
 
 tools: 
 	ocamlbuild genenums.byte info.byte extract.byte ppx_coc.byte

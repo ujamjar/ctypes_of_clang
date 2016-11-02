@@ -37,6 +37,7 @@ module Make(Clang : Coc_clang.S) = struct
 
   and typ = 
     | TVoid
+    | TBase of string
     | TNamed of string
     | TGlobal of global 
     | TArray of typ * int
@@ -80,6 +81,7 @@ module Make(Clang : Coc_clang.S) = struct
 
   and string_of_typ = function
     | TVoid -> "void"
+    | TBase s -> s
     | TNamed s -> s
     | TGlobal g -> name_of_global g
     | TArray(typ,size) -> string_of_typ typ ^ "[" ^ string_of_int size ^ "]"
@@ -106,19 +108,19 @@ module Make(Clang : Coc_clang.S) = struct
     }
 
   module BT = struct
-    let schar = TNamed("Ctypes.schar")
-    let char = TNamed("Ctypes.char")
-    let uchar = TNamed("Ctypes.uchar")
-    let ushort = TNamed("Ctypes.ushort")
-    let uint = TNamed("Ctypes.uint")
-    let ulong = TNamed("Ctypes.ulong")
-    let ullong = TNamed("Ctypes.ullong")
-    let short = TNamed("Ctypes.short")
-    let int = TNamed("Ctypes.int")
-    let long = TNamed("Ctypes.long")
-    let llong = TNamed("Ctypes.llong")
-    let float = TNamed("Ctypes.float")
-    let double = TNamed("Ctypes.double")
+    let schar = TBase("schar")
+    let char = TBase("char")
+    let uchar = TBase("uchar")
+    let ushort = TBase("ushort")
+    let uint = TBase("uint")
+    let ulong = TBase("ulong")
+    let ullong = TBase("ullong")
+    let short = TBase("short")
+    let int = TBase("int")
+    let long = TBase("long")
+    let llong = TBase("llong")
+    let float = TBase("float")
+    let double = TBase("double")
   end
 
   let rec conv_typ ctx typ cursor = 
@@ -185,7 +187,7 @@ module Make(Clang : Coc_clang.S) = struct
       L.warn "conv_decl_typ %s" (K.to_string k);
       TVoid
 
-  and default_enum_type = TNamed "Ctypes.int"
+  and default_enum_type = TBase "int"
 
   and conv_ptr_typ ctx typ cursor = 
     let kind = Type.kind typ in

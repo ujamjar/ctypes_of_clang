@@ -18,6 +18,7 @@ module Make(Clang : Coc_clang.S) : sig
 
   and typ = 
     | TVoid
+    | TBase of string
     | TNamed of string
     | TGlobal of global 
     | TArray of typ * int
