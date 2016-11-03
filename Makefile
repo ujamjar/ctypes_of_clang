@@ -7,8 +7,9 @@ lib:
 tools: 
 	ocamlbuild genenums.byte info.byte extract.byte ppx_coc.byte
 
+date: lib
+	ocamlbuild test_date.byte test_date.native
+
 clean:
 	ocamlbuild -clean
-	rm -f csrc/.o
-	rm -f testc
 

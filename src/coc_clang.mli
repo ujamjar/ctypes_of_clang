@@ -78,6 +78,7 @@ module type S = sig
     val is_const : ctyp -> bool
     val size : ctyp -> int
     val align : ctyp -> int
+    val offset : ctyp -> string -> int
     val pointee_type : ctyp -> ctyp
     val elem_type : ctyp -> ctyp
     val array_size : ctyp -> int
@@ -109,6 +110,7 @@ module type S = sig
     val num_args : cursor -> int
     val ret_type : cursor -> ctyp
     val args : cursor -> cursor array
+    val field_offset : cursor -> int
     val visit : cursor -> (cursor -> cursor -> 'a -> CXChildVisitResult.t * 'a) -> 'a -> 'a
   end
 

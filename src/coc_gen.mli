@@ -3,19 +3,8 @@ module Make(Clang : Coc_clang.S) : sig
   module Cparse : module type of Coc_parse.Make(Clang)
 
   module Attrs : sig
-
-    type t = 
-      {
-        mutable clangargs : string list;
-        mutable ctypesmodule : string;
-        mutable foreignmodule : string;
-        mutable typesmodule : string;
-        mutable gentypes : bool;
-        mutable gendecls : bool;
-      }
-
+    type t  
     val get : (string Asttypes.loc * Parsetree.payload) list -> t 
-
   end
 
   module G : Map.S with type key = Cparse.global

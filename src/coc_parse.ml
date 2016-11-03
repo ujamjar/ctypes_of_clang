@@ -47,8 +47,8 @@ module Make(Clang : Coc_clang.S) = struct
     | TComp of { global : global; members : member list }
 
   and member =
-    | Field of {name:string; typ:typ}
-    | Bitfield of {name:string; typ:typ; width:int}
+    | Field of {name:string; typ:typ; offset:int}
+    | Bitfield of {name:string; typ:typ; width:int; offset:int}
 
   let name_of_global = function
     | GComp {name} 
@@ -274,14 +274,16 @@ module Make(Clang : Coc_clang.S) = struct
     | K.FieldDecl, None -> 
       let typ = Cursor.cur_type cursor in
       let typ = conv_typ ctx typ cursor in
-      L.info "field %s '%s' [%s]" (string_of_typ typ) name (sloc loc);
-      R.Continue, (ctx, Field{name; typ}::members, prefix)
+      let offset = Cursor.field_offset cursor in
+      L.info "field %s '%s' [%i] [%s]" (string_of_typ typ) name offset (sloc loc);
+      R.Continue, (ctx, Field{name; typ; offset}::members, prefix)
 
     | K.FieldDecl, Some width -> 
       let typ = Cursor.cur_type cursor in
       let typ = conv_typ ctx typ cursor in
-      L.info "bitfield %s:%i '%s' [%s]" (string_of_typ typ) width name (sloc loc);
-      R.Continue, (ctx, Bitfield{name; typ; width}::members, prefix)
+      let offset = Cursor.field_offset cursor in
+      L.info "bitfield %s:%i '%s' [%i] [%s]" (string_of_typ typ) width name offset (sloc loc);
+      R.Continue, (ctx, Bitfield{name; typ; width; offset}::members, prefix)
 
     (* nested composite declaration *)
     | (K.StructDecl | K.UnionDecl) as kind, _ -> 

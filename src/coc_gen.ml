@@ -42,9 +42,12 @@ module Make(Clang : Coc_clang.S) = struct
         mutable clangargs : string list;
         mutable ctypesmodule : string;
         mutable foreignmodule : string;
+        mutable foreignfnmodule : string;
         mutable typesmodule : string;
         mutable gentypes : bool;
         mutable gendecls : bool;
+        mutable staticstructs : bool;
+        mutable deferbindingexn : bool;
       }
 
     let get_str loc = function
@@ -63,9 +66,12 @@ module Make(Clang : Coc_clang.S) = struct
           clangargs = [];
           ctypesmodule = "Ctypes";
           foreignmodule = "Foreign";
+          foreignfnmodule = "Ctypes";
           typesmodule = "";
           gentypes = true;
           gendecls = true;
+          staticstructs = false;
+          deferbindingexn = false;
         }
       in
       let rec get_attr = function
@@ -79,6 +85,9 @@ module Make(Clang : Coc_clang.S) = struct
         | ({txt="foreignmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.foreignmodule <- get_str loc args
 
+        | ({txt="foreignfnmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.foreignfnmodule <- get_str loc args
+
         | ({txt="typesmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.typesmodule <- get_str loc args
 
@@ -87,6 +96,12 @@ module Make(Clang : Coc_clang.S) = struct
 
         | ({txt="onlydecls";loc}, _) -> 
           attrs.gentypes <- false;
+
+        | ({txt="deferbindingexn";loc}, _) -> 
+          attrs.deferbindingexn <- true;
+
+        | ({txt="staticstructs";loc}, _) -> 
+          attrs.staticstructs <- true;
 
         | ({txt="logfile";loc}, PStr [ [%stri [%e? args]] ]) -> begin
           let logfile = open_out (get_str loc args) in
@@ -131,27 +146,23 @@ module Make(Clang : Coc_clang.S) = struct
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
     }
 
-  let ctypes_str attrs v = 
-    if attrs.ctypesmodule = "" then v
-    else (attrs.ctypesmodule ^ "." ^ v)
+  let _str attr v = if attr = "" then v else attr ^ "." ^ v
 
-  let foreign_str attrs v = 
-    if attrs.foreignmodule = "" then v
-    else (attrs.foreignmodule ^ "." ^ v)
-
-  let types_str attrs v = 
-    if attrs.typesmodule = "" then v
-    else (attrs.typesmodule ^ "." ^ v)
+  let ctypes_str attrs = _str attrs.ctypesmodule
+  let foreign_str attrs = _str attrs.foreignmodule 
+  let foreignfn_str attrs = _str attrs.foreignfnmodule 
+  let types_str attrs = _str attrs.typesmodule
 
   let ctypes_evar attrs v = evar (ctypes_str attrs v)
   let foreign_evar attrs v = evar (foreign_str attrs v)
+  let foreignfn_evar attrs v = evar (foreignfn_str attrs v)
   let types_evar attrs v = evar (types_str attrs v)
 
   let lid loc v = Location.mkloc (Longident.parse v) loc
   let ctypes_lid loc attrs v =  lid loc (ctypes_str attrs v)
 
   (*let carrow a b = [%expr ([%e a] @-> [%e b])]*)
-  let carrow ~attrs a b = [%expr ([%e ctypes_evar attrs "@->"] [%e a] [%e b])]
+  let carrow ~attrs a b = [%expr ([%e foreignfn_evar attrs "@->"] [%e a] [%e b])]
 
   let rec ctype ~ctx t =
     let find g = 
@@ -181,7 +192,7 @@ module Make(Clang : Coc_clang.S) = struct
     let fsig = 
       List.fold_right (fun a r -> carrow ~attrs:ctx.attrs (ctype ~ctx a) r) args 
         [%expr 
-          [%e ctypes_evar ctx.attrs "returning"]
+          [%e foreignfn_evar ctx.attrs "returning"]
             [%e ctype ~ctx ret]]
     in
     fsig
@@ -194,13 +205,13 @@ module Make(Clang : Coc_clang.S) = struct
     | Error (errs) -> cerror ~loc:ctx.loc errs
 
   let gen_cfn ~ctx fs_ret vi_name fs_args = 
-    [%expr
-      try
-        [%e foreign_evar ctx.attrs "foreign"] 
-               [%e Exp.constant (Pconst_string(vi_name,None))] 
-               [%e func_ctype ~ctx fs_ret fs_args]
-      with e -> (fun _ -> raise e)
-    ]
+    let defer e = 
+      if ctx.attrs.deferbindingexn then [%expr try [%e e] with e -> (fun _ -> raise e)]
+      else e
+    in
+    defer [%expr [%e foreign_evar ctx.attrs "foreign"] 
+                   [%e Exp.constant (Pconst_string(vi_name,None))] 
+                   [%e func_ctype ~ctx fs_ret fs_args] ]
 
   let gen_cvar ~ctx name typ = 
     [%expr [%e foreign_evar ctx.attrs "foreign_value"]
@@ -270,11 +281,13 @@ module Make(Clang : Coc_clang.S) = struct
     let mangle = Coc_ident.make initial_mangler in
     let gen_field i = 
       let field = ctypes_evar attrs "field" in
-      fun (n,t) ->
+      function 
+      | Field{name=n;typ=t} ->
         let name = "field_" ^ string_of_int i in
         name,
         [%expr [%e field] [%e estruct] [%e str n] [%e ctype ~ctx t]],
         method_ loc (mangle n) (evar name)
+      | Bitfield _ -> error "unexpected bitfield"
     in
 
     let fields = List.mapi gen_field members in
@@ -284,6 +297,42 @@ module Make(Clang : Coc_clang.S) = struct
       let seal = ctypes_evar attrs "seal" in
       let e = [%expr { Coc_runtime.ctype=[%e estruct]; members=[%e obj]; } ] in
       let e = if members = [] then e else [%expr let () = [%e seal] [%e estruct] in [%e e]] in
+      List.fold_right 
+        (fun (n,f,_) l -> [%expr let [%p pvar loc n] = [%e f] in [%e l]])
+        fields e
+    in
+    fields_and_obj 
+
+  let gen_cstruct_static ~ctx binding_name name members clayout =
+    let loc, attrs = ctx.loc, ctx.attrs in
+    let estruct = evar binding_name in
+    let method_ loc txt exp = Cf.method_ {txt;loc} Public (Cfk_concrete(Fresh, exp)) in
+    
+    let mangle = Coc_ident.make initial_mangler in
+    let gen_field i = 
+      function 
+      | Field{name=n;typ=t;offset=o} ->
+        let name = "field_" ^ string_of_int i in
+        name,
+        [%expr Coc_runtime.field ~offset:[%e int (o/8)] 
+            [%e estruct] [%e str n] [%e ctype ~ctx t]],
+        method_ loc (mangle n) (evar name)
+      | Bitfield _ -> error "unexpected bitfield"
+    in
+
+    let fields = List.mapi gen_field members in
+    let obj = Exp.object_ (Cstr.mk (Pat.any()) (List.map (fun (_,_,m) -> m) fields)) in
+
+    let seal e = 
+      [%expr let () = Coc_runtime.seal ~size:[%e int clayout.size] ~align:[%e int clayout.align] [%e estruct] in [%e e] ] 
+    in
+
+    let fields_and_obj = 
+      let e = [%expr { Coc_runtime.ctype=[%e estruct]; members=[%e obj]; } ] in
+      let e = 
+        if members = [] then e
+        else seal e
+      in
       List.fold_right 
         (fun (n,f,_) l -> [%expr let [%p pvar loc n] = [%e f] in [%e l]])
         fields e
@@ -329,10 +378,10 @@ module Make(Clang : Coc_clang.S) = struct
     let aligned_array size align = 
       if size <> 0 && align <> 0 && size >= align && size mod align = 0 then
         match align with (* we can probably do a bit better than this. *)
-        | 1 -> [ "auto_array", TArray(Cparse.BT.char, size) ]
-        | 2 -> [ "auto_array", TArray(Cparse.BT.short, size/2) ]
-        | 4 -> [ "auto_array", TArray(Cparse.BT.int, size/4) ]
-        | 8 -> [ "auto_array", TArray(Cparse.BT.llong, size/8) ]
+        | 1 -> [ Field{name="auto_array"; offset=0; typ=TArray(Cparse.BT.char,  size  )} ]
+        | 2 -> [ Field{name="auto_array"; offset=0; typ=TArray(Cparse.BT.short, size/2)} ]
+        | 4 -> [ Field{name="auto_array"; offset=0; typ=TArray(Cparse.BT.int,   size/4)} ]
+        | 8 -> [ Field{name="auto_array"; offset=0; typ=TArray(Cparse.BT.llong, size/8)} ]
         | _ -> []
       else []
     in
@@ -351,8 +400,7 @@ module Make(Clang : Coc_clang.S) = struct
         if has_bitfields members then 
           aligned_array size align
         else 
-          List.map (function Field{name;typ} -> name,typ
-                           | _ -> error "invalid bitfield found") members
+          members
       | exception Not_found -> 
         L.warn "Not_found: replacing structure with array [size=%i align=%i]" size align;
         aligned_array size align
@@ -390,10 +438,13 @@ module Make(Clang : Coc_clang.S) = struct
     let gen_decl ~ctx (b0, b1, global) = 
       match global with
 
-      | GComp { name=(name,_) } when ctx.attrs.gentypes ->
+      | GComp { name=(name,_); clayout } when ctx.attrs.gentypes ->
         let members = get_members ~ctx global in
-        Some(b1, gen_cstruct ~ctx b0 name members)
-     
+        if ctx.attrs.staticstructs then
+          Some(b1, gen_cstruct_static ~ctx b0 name members clayout)
+        else
+          Some(b1, gen_cstruct ~ctx b0 name members)
+
       | GVar { name=(name,_); typ } when ctx.attrs.gendecls -> 
         Some(b1, gen_cvar ~ctx name typ)
 

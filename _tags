@@ -1,12 +1,25 @@
-"csrc": -traverse
 "src": include
-"tools": include
 
-<{src,tools}/*.{ml,mli,cmi,cmo,byte,top}>: package(humane_re), package(rresult), package(dolog), package(ppx_deriving.runtime)
+<src/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog)
 <src/coc_gen.{ml,mli}>: package(ppx_tools.metaquot)
 <src/coc_parse.{ml,mli}>: package(ppx_deriving.show)
 <src/{coc_clang,coc_runtime}.{ml,mli}>: package(ctypes.foreign)
+
+"tools": include
+<tools/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog)
 <tools/*.{ml,mli,byte}>: package(ctypes.foreign), package(ppx_deriving.runtime), clang
 <tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools)
+
+#"examples/foo": include
+#<examples/foo/*.{ml,mli,cmi,cmo,cma,cmxa,byte.native}>: package(rresult), package(dolog), package(ctypes)
+#"examples/foo/foo.ml": ppx(tools/ppx_coc.byte)
+#<examples/foo/test_foo.ml>: package(ctypes), package(ctypes.foreign)
+#<examples/foo/test_foo.{byte,native}>: package(ctypes), package(ctypes.foreign), use_cfoo
+
+"examples/date": include
+"examples/date/date.ml": ppx(./tools/ppx_coc.byte)
+<examples/date/*>: package(ctypes.stubs)
+<examples/date/test_date.{native,byte}>: use_date
+<examples/date/*.{c,cma,cmxa,o,so,a}>: use_date
 
 "test": -traverse

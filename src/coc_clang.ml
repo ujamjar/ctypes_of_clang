@@ -66,6 +66,7 @@ module type S = sig
     val is_const : ctyp -> bool
     val size : ctyp -> int
     val align : ctyp -> int
+    val offset : ctyp -> string -> int
     val pointee_type : ctyp -> ctyp
     val elem_type : ctyp -> ctyp
     val array_size : ctyp -> int
@@ -95,6 +96,7 @@ module type S = sig
     val num_args : cursor -> int
     val ret_type : cursor -> ctyp
     val args : cursor -> cursor array
+    val field_offset : cursor -> int
     val visit : cursor -> (cursor -> cursor -> 'a -> CXChildVisitResult.t * 'a) -> 'a -> 'a
   end
 
@@ -295,6 +297,10 @@ module Make(X : Dllib) = struct
 
     let align = c2ll "clang_Type_getAlignOf" >> min0 >> Int64.to_int
 
+    let offset = 
+      let f = foreign "clang_Type_getOffsetOf" (ctyp @-> string @-> returning llong) in
+      (fun t n -> (f t n) |> Signed.LLong.to_int)
+
     let pointee_type = c2c "clang_getPointeeType" 
 
     let elem_type = c2c "clang_getArrayElementType"
@@ -374,6 +380,10 @@ module Make(X : Dllib) = struct
     let get_arg = foreign "clang_Cursor_getArgument" (cursor @-> int @-> returning cursor)
 
     let args c = Array.init (num_args c) (fun i -> get_arg c i)
+
+    let field_offset =
+      let f = foreign "clang_Cursor_getOffsetOfField" (cursor @-> returning llong) in
+      (fun c -> f c |> Signed.LLong.to_int)
 
     let callback = cursor @-> cursor @-> ptr void @-> returning Kind.t
     let visit_kids = foreign "clang_visitChildren"

@@ -28,8 +28,8 @@ module Make(Clang : Coc_clang.S) : sig
     | TComp of { global : global; members : member list }
 
   and member = 
-    | Field of {name:string; typ:typ}
-    | Bitfield of {name:string; typ:typ; width:int}
+    | Field of {name:string; typ:typ; offset:int}
+    | Bitfield of {name:string; typ:typ; width:int; offset:int}
 
   val name_of_global : global -> string
 
