@@ -10,16 +10,22 @@
 <tools/*.{ml,mli,byte}>: package(ctypes.foreign), package(ppx_deriving.runtime), clang
 <tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools)
 
-#"examples/foo": include
-#<examples/foo/*.{ml,mli,cmi,cmo,cma,cmxa,byte.native}>: package(rresult), package(dolog), package(ctypes)
-#"examples/foo/foo.ml": ppx(tools/ppx_coc.byte)
-#<examples/foo/test_foo.ml>: package(ctypes), package(ctypes.foreign)
-#<examples/foo/test_foo.{byte,native}>: package(ctypes), package(ctypes.foreign), use_cfoo
+"examples/foo": include
+"examples/foo/foo.ml": ppx(./tools/ppx_coc.byte), use_foo
+<examples/foo/*>: package(ctypes.stubs)
+<examples/foo/test_foo.{native,byte}>: use_foo
+<examples/foo/*.{c,cma,cmxa,o,so,a}>: use_foo
 
 "examples/date": include
 "examples/date/date.ml": ppx(./tools/ppx_coc.byte)
 <examples/date/*>: package(ctypes.stubs)
 <examples/date/test_date.{native,byte}>: use_date
 <examples/date/*.{c,cma,cmxa,o,so,a}>: use_date
+
+"examples/ncurses": include
+"examples/ncurses/ncurses.ml": ppx(./tools/ppx_coc.byte)
+<examples/ncurses/*>: package(ctypes.stubs)
+<examples/ncurses/test_ncurses.{native,byte}>: use_ncurses
+<examples/ncurses/*.{c,cma,cmxa,o,so,a}>: use_ncurses
 
 "test": -traverse

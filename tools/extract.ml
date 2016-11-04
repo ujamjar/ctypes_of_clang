@@ -57,7 +57,8 @@ let rec show_type ?(inner=false) =
   | TNamed(str) -> str
   | TPtr(t) -> sprintf "%s*" (show_type ~inner t)
   | TArray(t, size) -> sprintf "%s[%i]" (show_type ~inner t) size
-  | TFuncPtr{ret;args;variadic} -> 
+  | TFuncPtr{ret;args;variadic} 
+  | TFuncProto{ret;args;variadic} -> 
     sprintf "%s (*)(%s%s)"
       (show_type ~inner ret) 
       (String.concat ", " (List.map (fun t -> show_type ~inner t) args))

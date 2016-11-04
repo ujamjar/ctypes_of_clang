@@ -43,6 +43,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TArray of typ * int
     | TPtr of typ 
     | TFuncPtr of { ret : typ; args : typ list; variadic : bool }
+    | TFuncProto of { ret : typ; args : typ list; variadic : bool }
     | TEnum of { global : global; items : (string * int64) list; kind : typ }
     | TComp of { global : global; members : member list }
 
@@ -86,7 +87,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TGlobal g -> name_of_global g
     | TArray(typ,size) -> string_of_typ typ ^ "[" ^ string_of_int size ^ "]"
     | TPtr typ -> string_of_typ typ ^ "*"
-    | TFuncPtr {ret; args} -> 
+    | TFuncPtr {ret; args} | TFuncProto {ret; args} -> 
       string_of_typ ret ^ " (*)(" ^
         (String.concat ", " (List.map string_of_typ args)) ^ ")"
     | TEnum {global} -> "enum " ^ name_of_global global
@@ -141,13 +142,15 @@ module Make(Clang : Coc_clang.S) = struct
     | T.LongLong -> BT.llong
     | T.Float -> BT.float
     | T.Double -> BT.double
+    | T.Bool -> BT.char (* XXX *)
 
     (* XXX *)
     | T.LongDouble -> TNamed("Coc_runtime.ldouble")
   
     | T.FunctionProto | T.FunctionNoProto -> 
       let ret, args, variadic = conv_func_sig ctx typ cursor in
-      TFuncPtr{ret;args;variadic}
+      L.info "TFuncProto";
+      TFuncProto{ret;args;variadic}
 
     | T.Pointer -> conv_ptr_typ ctx (Type.pointee_type typ) cursor
 
@@ -201,6 +204,7 @@ module Make(Clang : Coc_clang.S) = struct
                       (K.to_string (Cursor.kind decl));
       if Type.kind ret <> T.Invalid then
         let ret, args, variadic = conv_func_sig ctx typ cursor in
+        L.info "TFuncPtr";
         TFuncPtr{ret;args;variadic}
       else if Cursor.kind decl <> K.NoDeclFound then
         TPtr(conv_decl_typ ctx (Cursor.canonical decl))
@@ -248,15 +252,19 @@ module Make(Clang : Coc_clang.S) = struct
       ctx, global_of_cursor ctx cnn_cursor, false
 
   let add_composite_members ctx global members = 
-    if members = [] then ctx
-    else { ctx with comp_members_map = TypeMap.add global members ctx.comp_members_map} 
+    if members = [] then ctx, false
+    else { ctx with comp_members_map = TypeMap.add global members ctx.comp_members_map}, true
 
   let add_enum_items ctx global items typ = 
     if items = [] then ctx
     else { ctx with enum_items_map = TypeMap.add global (items,typ) ctx.enum_items_map} 
 
-  let add_global ctx primary global =
-    if primary then { ctx with globals = global :: ctx.globals } else ctx
+  let add_global ctx primary defines global =
+    if primary then { ctx with globals = global :: ctx.globals } 
+    else if defines then
+      (* filter out old defn *)
+      { ctx with globals = global :: (List.filter ((<>) global) ctx.globals) }
+    else ctx
 
   let get_clayout cursor = 
     let typ = Cursor.cur_type cursor in
@@ -297,8 +305,8 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, global, primary = declare ~ctx ~global:(GComp{loc;name;kind;clayout}) 
         ~cnn_cursor ~cursor in
       (* check for members *)
-      let ctx = visit_nested_composite ctx global cursor name in
-      let ctx = add_global ctx primary global in
+      let ctx, defines = visit_nested_composite ctx global cursor name in
+      let ctx = add_global ctx primary defines global in
       R.Continue, (ctx, members, prefix)
 
     (* nested enumeration *)
@@ -310,7 +318,7 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, global, primary = declare ~ctx ~global:(GEnum{loc;name}) ~cnn_cursor ~cursor in
       (* check for members *)
       let ctx = visit_enum ctx global cursor name in
-      let ctx = add_global ctx primary global in
+      let ctx = add_global ctx primary false global in
       R.Continue, (ctx, members, prefix)
 
     | _ as k, _ -> 
@@ -359,8 +367,8 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, global, primary = declare ~ctx ~global:(GComp{loc;name;kind;clayout}) 
         ~cnn_cursor ~cursor in
       (* check for members *)
-      let ctx = visit_nested_composite ctx global cursor name in
-      let ctx = add_global ctx primary global in
+      let ctx, defines = visit_nested_composite ctx global cursor name in
+      let ctx = add_global ctx primary defines global in
       R.Continue, ctx
    
     | K.EnumDecl ->
@@ -370,20 +378,23 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, global, primary = declare ~ctx ~global:(GEnum{loc;name}) ~cnn_cursor ~cursor in
       (* check for members *)
       let ctx = visit_enum ctx global cursor name in
-      let ctx = add_global ctx primary global in
+      let ctx = add_global ctx primary false global in
       R.Continue, ctx
 
     | K.FunctionDecl -> begin
       let open CXLinkageKind in
       match Cursor.linkage cursor with
       | External | UniqueExternal ->
-        L.info "func '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
+        L.info "TFuncPtr '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
         let typ = Cursor.cur_type cursor in
-        let typ = conv_typ ctx typ cursor in
+        let typ = 
+          let ret, args, variadic = conv_func_sig ctx typ cursor in
+          TFuncPtr{ret;args;variadic}
+        in
         let name = name, ctx.id() in
         let global = GFunc{loc;name;typ} in
         let ctx, _, _ = declare ~ctx ~global ~cnn_cursor:cursor ~cursor:cursor in
-        let ctx = add_global ctx true global in
+        let ctx = add_global ctx true false global in
         R.Continue, ctx
       | _ -> 
         L.info "static func '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
@@ -401,7 +412,7 @@ module Make(Clang : Coc_clang.S) = struct
         let name = name, ctx.id() in
         let global = GVar{loc;name;typ;is_const} in
         let ctx, _, _ = declare ~ctx ~global ~cnn_cursor:cursor ~cursor in
-        let ctx = add_global ctx true global in
+        let ctx = add_global ctx true false global in
         R.Continue, ctx
       | _ ->
         L.info "static var '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
@@ -420,7 +431,7 @@ module Make(Clang : Coc_clang.S) = struct
       let name = name, ctx.id() in
       let global = GTypedef{loc;name;typ} in
       let ctx, _, _ = declare ~ctx ~global ~cnn_cursor:cursor ~cursor in
-      let ctx = add_global ctx true global in
+      let ctx = add_global ctx true false global in
       R.Continue, ctx
 
     | _ as kind -> 

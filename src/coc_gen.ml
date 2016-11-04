@@ -181,7 +181,7 @@ module Make(Clang : Coc_clang.S) = struct
               [%e ctype ~ctx t]]
     | TComp{global} -> types_evar ctx.attrs (find global)
     | TEnum{global} -> [%expr [%e types_evar ctx.attrs (find global)].ctype]
-    | TFuncPtr{ret;args;variadic} -> 
+    | TFuncPtr{ret;args;variadic} | TFuncProto{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
       else [%expr [%e ctypes_evar ctx.attrs "static_funptr"] [%e func_ctype ~ctx ret args] ]
     | TGlobal(global) -> types_evar ctx.attrs (find global)
@@ -214,9 +214,17 @@ module Make(Clang : Coc_clang.S) = struct
                    [%e func_ctype ~ctx fs_ret fs_args] ]
 
   let gen_cvar ~ctx name typ = 
-    [%expr [%e foreign_evar ctx.attrs "foreign_value"]
-             [%e Exp.constant (Pconst_string(name,None))] 
-             [%e ctype ~ctx typ]]
+    let defer e = 
+      if ctx.attrs.deferbindingexn then 
+        [%expr try [%e e] 
+          with e -> 
+            [%e ctypes_evar ctx.attrs "from_voidp"] 
+              [%e ctype ~ctx typ] [%e ctypes_evar ctx.attrs "null"]]
+      else e
+    in
+    defer [%expr [%e foreign_evar ctx.attrs "foreign_value"]
+                   [%e Exp.constant (Pconst_string(name,None))] 
+                   [%e ctype ~ctx typ]]
 
   let pvar loc s = Pat.var (Location.mkloc s loc)
 
@@ -386,10 +394,10 @@ module Make(Clang : Coc_clang.S) = struct
       else []
     in
     match global with
-    | GComp { clayout={size;align} } -> begin
+    | GComp { name=(name,_); clayout={size;align} } -> begin
       match TypeMap.find global ctx.comp_members_map with
       | [] -> 
-        L.warn "no members: replacing structure with array [size=%i align=%i]" size align;
+        L.warn "no members: %s replacing structure with array [size=%i align=%i]" name size align;
         aligned_array size align
       | _ as members ->
         let rec has_bitfields = 
@@ -402,7 +410,7 @@ module Make(Clang : Coc_clang.S) = struct
         else 
           members
       | exception Not_found -> 
-        L.warn "Not_found: replacing structure with array [size=%i align=%i]" size align;
+        L.warn "Not_found: %s replacing structure with array [size=%i align=%i]" name size align;
         aligned_array size align
     end
     | _ -> error "get_members expecting composite"
@@ -415,26 +423,19 @@ module Make(Clang : Coc_clang.S) = struct
 
   let gen_ccode ~ctx ~code = 
 
+    (* forward declaration of structs (which may be recursively defined) *)
     let fwd_decl ~ctx (b0, b1, global) = 
-      if not ctx.attrs.gentypes then None
-      else
-        match global with
-        | GComp {name=(name,_); kind} -> 
-          Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
+      match global with
 
-        | GEnum { name=(name,_) } ->
-          let items, kind = get_enum_items ~ctx global in
-          Some(b1, gen_enum ~ctx items kind)
+      | GComp {name=(name,_); kind} when ctx.attrs.gentypes -> 
+        Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
+     
+      | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
 
-        | GTypedef { name=(name,_); typ } ->
-          Some(b1, ctype ~ctx typ) (* XXX ctypedef? *)
-       
-        | GVar _ | GFunc _ -> None
-
-        | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
-
+      | _ -> None
     in
 
+    (* declarations *)
     let gen_decl ~ctx (b0, b1, global) = 
       match global with
 
@@ -445,13 +446,18 @@ module Make(Clang : Coc_clang.S) = struct
         else
           Some(b1, gen_cstruct ~ctx b0 name members)
 
+      | GEnum { name=(name,_) } when ctx.attrs.gentypes ->
+        let items, kind = get_enum_items ~ctx global in
+        Some(b1, gen_enum ~ctx items kind)
+
+      | GTypedef { name=(name,_); typ } when ctx.attrs.gentypes ->
+        Some(b1, ctype ~ctx typ) (* XXX ctypedef? *)
+
       | GVar { name=(name,_); typ } when ctx.attrs.gendecls -> 
         Some(b1, gen_cvar ~ctx name typ)
 
       | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } when ctx.attrs.gendecls -> 
         Some(b1, gen_cfn ~ctx ret name args)
-
-      | GEnum _ | GTypedef _ | GFunc _ -> None
 
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
 

@@ -24,6 +24,7 @@ module Make(Clang : Coc_clang.S) : sig
     | TArray of typ * int
     | TPtr of typ 
     | TFuncPtr of { ret : typ; args : typ list; variadic : bool }
+    | TFuncProto of { ret : typ; args : typ list; variadic : bool }
     | TEnum of { global : global; items : (string * int64) list; kind : typ }
     | TComp of { global : global; members : member list }
 
