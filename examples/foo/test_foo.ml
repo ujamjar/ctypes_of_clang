@@ -11,5 +11,5 @@ let () = add_foo_ptr (addr a) (addr b) (addr c)
 let () = print_foo c
 
 let c = add_foo a b 
-(*let c = map_foo_a c incr*)
+let c = map_foo_a c incr
 let () = print_foo c

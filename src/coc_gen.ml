@@ -162,7 +162,7 @@ module Make(Clang : Coc_clang.S) = struct
   let ctypes_lid loc attrs v =  lid loc (ctypes_str attrs v)
 
   (*let carrow a b = [%expr ([%e a] @-> [%e b])]*)
-  let carrow ~attrs a b = [%expr ([%e foreignfn_evar attrs "@->"] [%e a] [%e b])]
+  let carrow ?(evar=ctypes_evar) ~attrs a b = [%expr ([%e evar attrs "@->"] [%e a] [%e b])]
 
   let rec ctype ~ctx t =
     let find g = 
@@ -183,16 +183,17 @@ module Make(Clang : Coc_clang.S) = struct
     | TEnum{global} -> [%expr [%e types_evar ctx.attrs (find global)].ctype]
     | TFuncPtr{ret;args;variadic} | TFuncProto{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
-      else [%expr [%e ctypes_evar ctx.attrs "static_funptr"] [%e func_ctype ~ctx ret args] ]
+      else [%expr [%e ctypes_evar ctx.attrs "static_funptr"] 
+                    [%e func_ctype ~evar:ctypes_evar ~ctx ret args] ]
     | TGlobal(global) -> types_evar ctx.attrs (find global)
     (*| _ -> error ~loc:ctx.loc "unsupported type '%s'" (string_of_typ t)*)
 
-  and func_ctype ~ctx ret args = 
+  and func_ctype ?(evar=foreign_evar) ~ctx ret args = 
     let args = if args = [] then [TVoid] else args in
     let fsig = 
-      List.fold_right (fun a r -> carrow ~attrs:ctx.attrs (ctype ~ctx a) r) args 
+      List.fold_right (fun a r -> carrow ~evar ~attrs:ctx.attrs (ctype ~ctx a) r) args 
         [%expr 
-          [%e foreignfn_evar ctx.attrs "returning"]
+          [%e evar ctx.attrs "returning"]
             [%e ctype ~ctx ret]]
     in
     fsig
