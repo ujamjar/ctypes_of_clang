@@ -12,7 +12,7 @@
 
 "examples/foo": include
 "examples/foo/foo.ml": ppx(./tools/ppx_coc.byte), use_foo
-<examples/foo/*>: package(ctypes.stubs)
+<examples/foo/*>: package(ctypes.stubs), package(ctypes.foreign)
 <examples/foo/test_foo.{native,byte}>: use_foo
 <examples/foo/*.{c,cma,cmxa,o,so,a}>: use_foo
 
@@ -24,7 +24,7 @@
 
 "examples/ncurses": include
 "examples/ncurses/ncurses.ml": ppx(./tools/ppx_coc.byte)
-<examples/ncurses/*>: package(ctypes.stubs)
+<examples/ncurses/*>: package(ctypes.stubs), package(ctypes.foreign)
 <examples/ncurses/test_ncurses.{native,byte}>: use_ncurses
 <examples/ncurses/*.{c,cma,cmxa,o,so,a}>: use_ncurses
 
