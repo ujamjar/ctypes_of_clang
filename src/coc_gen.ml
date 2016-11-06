@@ -48,6 +48,8 @@ module Make(Clang : Coc_clang.S) = struct
         mutable gendecls : bool;
         mutable staticstructs : bool;
         mutable deferbindingexn : bool;
+        mutable excludedecls : string list;
+        mutable includedecls : string list;
       }
 
     let get_str loc = function
@@ -72,6 +74,8 @@ module Make(Clang : Coc_clang.S) = struct
           gendecls = true;
           staticstructs = false;
           deferbindingexn = false;
+          excludedecls = [];
+          includedecls = [];
         }
       in
       let rec get_attr = function
@@ -121,6 +125,12 @@ module Make(Clang : Coc_clang.S) = struct
             | "debug" -> Log.DEBUG
             | s -> error ~loc "unknown log level %s" s) (get_str loc args)
 
+        | ({txt="excludedecls";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.excludedecls <- attrs.excludedecls @ get_str_list loc args
+
+        | ({txt="includedecls";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.includedecls <- attrs.includedecls @ get_str_list loc args
+
         | _ -> ()
       in
       List.iter get_attr a;
@@ -144,6 +154,7 @@ module Make(Clang : Coc_clang.S) = struct
       builtins : global list;
       comp_members_map : member list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
+      gendecl : string -> bool;
     }
 
   let _str attr v = if attr = "" then v else attr ^ "." ^ v
@@ -161,13 +172,15 @@ module Make(Clang : Coc_clang.S) = struct
   let lid loc v = Location.mkloc (Longident.parse v) loc
   let ctypes_lid loc attrs v =  lid loc (ctypes_str attrs v)
 
-  (*let carrow a b = [%expr ([%e a] @-> [%e b])]*)
   let carrow ?(evar=ctypes_evar) ~attrs a b = [%expr ([%e evar attrs "@->"] [%e a] [%e b])]
+
+  exception Global_not_found of string
 
   let rec ctype ~ctx t =
     let find g = 
       try G.find g ctx.global_to_binding
-      with _ -> error ~loc:ctx.loc "ctype: cannot find %s" (name_of_global g)
+      with _ -> raise (Global_not_found (name_of_global g))
+        (*error ~loc:ctx.loc "ctype: cannot find %s" (name_of_global g)*)
     in
     match t with
     | TVoid -> ctypes_evar ctx.attrs "void"
@@ -186,7 +199,6 @@ module Make(Clang : Coc_clang.S) = struct
       else [%expr [%e ctypes_evar ctx.attrs "static_funptr"] 
                     [%e func_ctype ~evar:ctypes_evar ~ctx ret args] ]
     | TGlobal(global) -> types_evar ctx.attrs (find global)
-    (*| _ -> error ~loc:ctx.loc "unsupported type '%s'" (string_of_typ t)*)
 
   and func_ctype ?(evar=foreign_evar) ~ctx ret args = 
     let args = if args = [] then [TVoid] else args in
@@ -422,6 +434,9 @@ module Make(Clang : Coc_clang.S) = struct
     with Not_found -> 
       [], default_enum_type
 
+  let gen_ctypedef ~ctx name typ = 
+    [%expr [%e ctypes_evar ctx.attrs "typedef"] [%e ctype ~ctx typ] [%e str name]]
+
   let gen_ccode ~ctx ~code = 
 
     (* forward declaration of structs (which may be recursively defined) *)
@@ -452,18 +467,24 @@ module Make(Clang : Coc_clang.S) = struct
         Some(b1, gen_enum ~ctx items kind)
 
       | GTypedef { name=(name,_); typ } when ctx.attrs.gentypes ->
-        Some(b1, ctype ~ctx typ) (* XXX ctypedef? *)
+        (*Some(b1, ctype ~ctx typ)*)
+        Some(b1, gen_ctypedef ~ctx name typ)
 
-      | GVar { name=(name,_); typ } when ctx.attrs.gendecls -> 
+      | GVar { loc; name=(name,_); typ } 
+        when ctx.attrs.gendecls && ctx.gendecl name -> 
         Some(b1, gen_cvar ~ctx name typ)
 
-      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic} } when ctx.attrs.gendecls -> 
+      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic=false} } 
+        when ctx.attrs.gendecls && ctx.gendecl name -> 
         Some(b1, gen_cfn ~ctx ret name args)
 
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
 
       | _ -> None
     in
+
+    let fwd_decl ~ctx x = try fwd_decl ~ctx x with Global_not_found _ -> None in
+    let gen_decl ~ctx x = try gen_decl ~ctx x with Global_not_found _ -> None in
 
     run ~ctx ~code @@ fun c_ctx -> 
       let globals = mangle_declarations ~ctx c_ctx.globals in
@@ -483,16 +504,29 @@ module Make(Clang : Coc_clang.S) = struct
       GBuiltin{name="__builtin_va_list"; typ=TNamed("Coc_runtime.__builtin_va_list")} 
     ]
 
+  let gendecl exc inc = 
+    let exc = List.map Humane_re.Str.regexp exc in
+    let inc = List.map Humane_re.Str.regexp inc in
+    (fun s ->
+       let chk def res = 
+         if res = [] then def 
+         else List.fold_left (fun b re -> b || Humane_re.Str.matches re s) false res
+       in
+       if chk false exc then false
+       else chk true inc)
+
   let coc_mapper argv = 
     let init_ctx loc attrs = 
       let mangle = Coc_ident.make initial_mangler in
+      let attrs = Attrs.get attrs in 
       {
-        loc; attrs=Attrs.get attrs; 
+        loc; attrs;
         mangle = (fun s -> mangle (ocaml_lid s));
         global_to_binding = G.empty;
-        builtins;
+        builtins=[];
         comp_members_map = TypeMap.empty;
         enum_items_map = TypeMap.empty;
+        gendecl= gendecl attrs.excludedecls attrs.includedecls;
       }
     in
 

@@ -1,5 +1,5 @@
 let _ =
-  let prefix = "date_cstub" in
+  let prefix = "ncurses_cstub" in
   let generate_ml, generate_c = ref false, ref false in
   Arg.(parse [ ("-ml", Set generate_ml, "Generate ML");
                 ("-c", Set generate_c, "Generate C") ])

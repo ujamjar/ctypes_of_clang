@@ -18,6 +18,7 @@ module Make(Clang : Coc_clang.S) : sig
       builtins : Cparse.global list;
       comp_members_map : Cparse.member list Cparse.TypeMap.t;
       enum_items_map : ((string * int64) list * Cparse.typ) Cparse.TypeMap.t;
+      gendecl : string -> bool;
     }
 
   val gen_ccode : ctx:t -> code:string -> 

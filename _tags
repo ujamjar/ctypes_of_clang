@@ -1,6 +1,6 @@
 "src": include
 
-<src/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog)
+<src/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog), package(humane_re)
 <src/coc_gen.{ml,mli}>: package(ppx_tools.metaquot)
 <src/coc_parse.{ml,mli}>: package(ppx_deriving.show)
 <src/{coc_clang,coc_runtime}.{ml,mli}>: package(ctypes.foreign)
@@ -8,7 +8,7 @@
 "tools": include
 <tools/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog)
 <tools/*.{ml,mli,byte}>: package(ctypes.foreign), package(ppx_deriving.runtime), clang
-<tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools)
+<tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools), package(humane_re)
 
 "examples/foo": include
 "examples/foo/foo.ml": ppx(./tools/ppx_coc.byte), use_foo

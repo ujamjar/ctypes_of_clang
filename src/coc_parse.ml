@@ -275,26 +275,24 @@ module Make(Clang : Coc_clang.S) = struct
     let name = Cursor.spelling cursor in
     let loc = Loc.location @@ Cursor.location cursor in
     let bitfield_width = Cursor.bit_width cursor in
+    let skip_not_found f a = try f a with Global_not_found _ -> R.Continue, (ctx,members,prefix) in
 
-    match Cursor.kind cursor, bitfield_width with
+    let field_decl = function
+      | None ->
+        let typ = Cursor.cur_type cursor in
+        let typ = conv_typ ctx typ cursor in
+        let offset = Cursor.field_offset cursor in
+        L.info "field %s '%s' [%i] [%s]" (string_of_typ typ) name offset (sloc loc);
+        R.Continue, (ctx, Field{name; typ; offset}::members, prefix)
+      | Some width ->
+        let typ = Cursor.cur_type cursor in
+        let typ = conv_typ ctx typ cursor in
+        let offset = Cursor.field_offset cursor in
+        L.info "bitfield %s:%i '%s' [%i] [%s]" (string_of_typ typ) width name offset (sloc loc);
+        R.Continue, (ctx, Bitfield{name; typ; width; offset}::members, prefix)
+    in
 
-    (* field - need to detect nested composites/enums *)
-    | K.FieldDecl, None -> 
-      let typ = Cursor.cur_type cursor in
-      let typ = conv_typ ctx typ cursor in
-      let offset = Cursor.field_offset cursor in
-      L.info "field %s '%s' [%i] [%s]" (string_of_typ typ) name offset (sloc loc);
-      R.Continue, (ctx, Field{name; typ; offset}::members, prefix)
-
-    | K.FieldDecl, Some width -> 
-      let typ = Cursor.cur_type cursor in
-      let typ = conv_typ ctx typ cursor in
-      let offset = Cursor.field_offset cursor in
-      L.info "bitfield %s:%i '%s' [%i] [%s]" (string_of_typ typ) width name offset (sloc loc);
-      R.Continue, (ctx, Bitfield{name; typ; width; offset}::members, prefix)
-
-    (* nested composite declaration *)
-    | (K.StructDecl | K.UnionDecl) as kind, _ -> 
+    let comp_decl kind = 
       let kind = to_kind kind in
       let cnn_cursor = Cursor.canonical cursor in
       let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
@@ -308,9 +306,9 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, defines = visit_nested_composite ctx global cursor name in
       let ctx = add_global ctx primary defines global in
       R.Continue, (ctx, members, prefix)
+    in
 
-    (* nested enumeration *)
-    | K.EnumDecl, _ -> 
+    let enum_decl () = 
       let cnn_cursor = Cursor.canonical cursor in
       let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
       L.info "nested enum '%s' [%s] [%s]" name (sloc loc) (sloc cnn_loc);
@@ -320,6 +318,18 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx = visit_enum ctx global cursor name in
       let ctx = add_global ctx primary false global in
       R.Continue, (ctx, members, prefix)
+    in
+
+    match Cursor.kind cursor, bitfield_width with
+
+    (* field - need to detect nested composites/enums *)
+    | K.FieldDecl, w -> skip_not_found field_decl w
+
+    (* nested composite declaration *)
+    | (K.StructDecl | K.UnionDecl) as kind, _ -> skip_not_found comp_decl kind
+
+    (* nested enumeration *)
+    | K.EnumDecl, _ -> skip_not_found enum_decl ()
 
     | _ as k, _ -> 
       L.warn "unhandled composite member type '%s'" (K.to_string k);
@@ -352,13 +362,9 @@ module Make(Clang : Coc_clang.S) = struct
     let loc = Loc.location @@ Cursor.location cursor in
     let cnn_cursor = Cursor.canonical cursor in
     let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
+    let skip_not_found f a = try f a with Global_not_found _ -> R.Continue, ctx in
 
-    match Cursor.kind cursor with
-    | K.UnexposedDecl -> 
-      L.warn "unexposed declaration [%s] - why does this happen?" (sloc loc);
-      R.Recurse, ctx
-
-    | K.StructDecl | K.UnionDecl as kind ->
+    let comp_decl kind = 
       let kind = to_kind kind in
       L.info "comp '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
       (* declare the (top-level) global *)
@@ -370,8 +376,9 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, defines = visit_nested_composite ctx global cursor name in
       let ctx = add_global ctx primary defines global in
       R.Continue, ctx
-   
-    | K.EnumDecl ->
+    in
+       
+    let enum_decl () = 
       L.info "enum '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
       (* declare the (top-level) global *)
       let name = name, ctx.id() in
@@ -380,8 +387,9 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx = visit_enum ctx global cursor name in
       let ctx = add_global ctx primary false global in
       R.Continue, ctx
+    in
 
-    | K.FunctionDecl -> begin
+    let function_decl () = 
       let open CXLinkageKind in
       match Cursor.linkage cursor with
       | External | UniqueExternal ->
@@ -399,9 +407,9 @@ module Make(Clang : Coc_clang.S) = struct
       | _ -> 
         L.info "static func '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
         R.Continue, ctx
-    end
+    in
 
-    | K.VarDecl -> begin
+    let var_decl () = 
       let open CXLinkageKind in
       match Cursor.linkage cursor with
       | External | UniqueExternal ->
@@ -417,9 +425,9 @@ module Make(Clang : Coc_clang.S) = struct
       | _ ->
         L.info "static var '%s' [%s]->[%s]" name (sloc loc) (sloc cnn_loc);
         R.Continue, ctx
-    end
+    in
 
-    | K.TypedefDecl ->
+    let typedef_decl () = 
       let under_typ = Cursor.typedef_type cursor in
       let under_typ = 
         match Type.kind under_typ with
@@ -433,6 +441,22 @@ module Make(Clang : Coc_clang.S) = struct
       let ctx, _, _ = declare ~ctx ~global ~cnn_cursor:cursor ~cursor in
       let ctx = add_global ctx true false global in
       R.Continue, ctx
+    in
+
+    match Cursor.kind cursor with
+    | K.UnexposedDecl -> 
+      L.warn "unexposed declaration [%s]" (sloc loc);
+      R.Recurse, ctx
+
+    | K.StructDecl | K.UnionDecl as kind -> skip_not_found comp_decl kind
+   
+    | K.EnumDecl -> skip_not_found enum_decl ()
+
+    | K.FunctionDecl -> skip_not_found function_decl ()
+
+    | K.VarDecl -> skip_not_found var_decl ()
+
+    | K.TypedefDecl -> skip_not_found typedef_decl ()
 
     | _ as kind -> 
       L.warn "unknown cursor kind '%s'" (K.to_string kind);
