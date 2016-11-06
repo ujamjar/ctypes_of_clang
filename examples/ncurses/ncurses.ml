@@ -11,7 +11,7 @@ module Bindings(F : Cstubs.FOREIGN) = struct
     [@foreignmodule "F"] 
     [@foreignfnmodule "F"] 
     [@onlydecls]
-    [@excludedecls ["_.*";"trace"]]
+    [@excludedecls [".*:_.*";".*:trace"]]
 
 end
 

@@ -50,6 +50,8 @@ module Make(Clang : Coc_clang.S) = struct
         mutable deferbindingexn : bool;
         mutable excludedecls : string list;
         mutable includedecls : string list;
+        mutable excludetypes : string list;
+        mutable includetypes  : string list;
       }
 
     let get_str loc = function
@@ -76,6 +78,8 @@ module Make(Clang : Coc_clang.S) = struct
           deferbindingexn = false;
           excludedecls = [];
           includedecls = [];
+          excludetypes = [];
+          includetypes = [];
         }
       in
       let rec get_attr = function
@@ -131,6 +135,12 @@ module Make(Clang : Coc_clang.S) = struct
         | ({txt="includedecls";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.includedecls <- attrs.includedecls @ get_str_list loc args
 
+        | ({txt="excludetypes";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.excludetypes <- attrs.excludetypes @ get_str_list loc args
+
+        | ({txt="includetypes";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.includetypes <- attrs.includetypes @ get_str_list loc args
+
         | _ -> ()
       in
       List.iter get_attr a;
@@ -154,7 +164,8 @@ module Make(Clang : Coc_clang.S) = struct
       builtins : global list;
       comp_members_map : member list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
-      gendecl : string -> bool;
+      gendecl : Clang.Loc.t -> string -> bool;
+      gentype : Clang.Loc.t -> string -> bool;
     }
 
   let _str attr v = if attr = "" then v else attr ^ "." ^ v
@@ -443,7 +454,8 @@ module Make(Clang : Coc_clang.S) = struct
     let fwd_decl ~ctx (b0, b1, global) = 
       match global with
 
-      | GComp {name=(name,_); kind} when ctx.attrs.gentypes -> 
+      | GComp {loc; name=(name,_); kind} 
+        when ctx.attrs.gentypes && ctx.gentype loc name -> 
         Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
      
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
@@ -455,27 +467,29 @@ module Make(Clang : Coc_clang.S) = struct
     let gen_decl ~ctx (b0, b1, global) = 
       match global with
 
-      | GComp { name=(name,_); clayout } when ctx.attrs.gentypes ->
+      | GComp { loc; name=(name,_); clayout } 
+        when ctx.attrs.gentypes && ctx.gentype loc name ->
         let members = get_members ~ctx global in
         if ctx.attrs.staticstructs then
           Some(b1, gen_cstruct_static ~ctx b0 name members clayout)
         else
           Some(b1, gen_cstruct ~ctx b0 name members)
 
-      | GEnum { name=(name,_) } when ctx.attrs.gentypes ->
+      | GEnum { loc; name=(name,_) } 
+        when ctx.attrs.gentypes && ctx.gentype loc name ->
         let items, kind = get_enum_items ~ctx global in
         Some(b1, gen_enum ~ctx items kind)
 
-      | GTypedef { name=(name,_); typ } when ctx.attrs.gentypes ->
-        (*Some(b1, ctype ~ctx typ)*)
+      | GTypedef { loc; name=(name,_); typ } 
+        when ctx.attrs.gentypes && ctx.gentype loc name ->
         Some(b1, gen_ctypedef ~ctx name typ)
 
       | GVar { loc; name=(name,_); typ } 
-        when ctx.attrs.gendecls && ctx.gendecl name -> 
+        when ctx.attrs.gendecls && ctx.gendecl loc name -> 
         Some(b1, gen_cvar ~ctx name typ)
 
       | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic=false} } 
-        when ctx.attrs.gendecls && ctx.gendecl name -> 
+        when ctx.attrs.gendecls && ctx.gendecl loc name -> 
         Some(b1, gen_cfn ~ctx ret name args)
 
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
@@ -504,10 +518,11 @@ module Make(Clang : Coc_clang.S) = struct
       GBuiltin{name="__builtin_va_list"; typ=TNamed("Coc_runtime.__builtin_va_list")} 
     ]
 
-  let gendecl exc inc = 
+  let genglobal exc inc = 
     let exc = List.map Humane_re.Str.regexp exc in
     let inc = List.map Humane_re.Str.regexp inc in
-    (fun s ->
+    (fun loc s ->
+       let s = loc.Clang.Loc.file ^ ":" ^ s in
        let chk def res = 
          if res = [] then def 
          else List.fold_left (fun b re -> b || Humane_re.Str.matches re s) false res
@@ -526,7 +541,8 @@ module Make(Clang : Coc_clang.S) = struct
         builtins=[];
         comp_members_map = TypeMap.empty;
         enum_items_map = TypeMap.empty;
-        gendecl= gendecl attrs.excludedecls attrs.includedecls;
+        gendecl = genglobal attrs.excludedecls attrs.includedecls;
+        gentype = genglobal attrs.excludetypes attrs.includetypes;
       }
     in
 

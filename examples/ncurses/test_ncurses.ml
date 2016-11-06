@@ -9,13 +9,13 @@ let ul = Unsigned.ULong.of_int
 
 let () =
   let main_window = initscr () in
-  cbreak ();
+  ignore @@ cbreak ();
   let small_window = newwin 10 10 5 5 in
-  mvwaddstr main_window 1 2 (coerce string (ptr char) "Hello");
-  mvwaddstr small_window 2 2 (coerce string (ptr char) "World");
-  box small_window (ul 0) (ul 0);
-  refresh ();
+  ignore @@ mvwaddstr main_window 1 2 (coerce string (ptr char) "Hello");
+  ignore @@ mvwaddstr small_window 2 2 (coerce string (ptr char) "World");
+  ignore @@ box small_window (ul 0) (ul 0);
+  ignore @@ refresh ();
   Unix.sleep 1;
-  wrefresh small_window;
+  ignore @@ wrefresh small_window;
   Unix.sleep 5;
   ignore @@ endwin()

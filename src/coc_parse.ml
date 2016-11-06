@@ -170,7 +170,7 @@ module Make(Clang : Coc_clang.S) = struct
     let get_global () = 
       let cursor = Cursor.canonical cursor in
       try global_of_cursor ctx cursor 
-      with e -> L.error "conv_decl_typ [%s]" (sloc @@ Loc.location @@ Cursor.location cursor); 
+      with e -> L.warn "conv_decl_typ [%s]" (sloc @@ Loc.location @@ Cursor.location cursor); 
                 raise e 
     in
     match Cursor.kind cursor with
