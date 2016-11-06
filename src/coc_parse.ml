@@ -362,7 +362,10 @@ module Make(Clang : Coc_clang.S) = struct
     let loc = Loc.location @@ Cursor.location cursor in
     let cnn_cursor = Cursor.canonical cursor in
     let cnn_loc = Loc.location @@ Cursor.location cnn_cursor in
-    let skip_not_found f a = try f a with Global_not_found _ -> R.Continue, ctx in
+    let skip_not_found f a = 
+      try f a 
+      with Global_not_found _ -> (*L.warn "skipped";*) R.Continue, ctx 
+    in
 
     let comp_decl kind = 
       let kind = to_kind kind in

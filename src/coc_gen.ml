@@ -211,7 +211,7 @@ module Make(Clang : Coc_clang.S) = struct
                     [%e func_ctype ~evar:ctypes_evar ~ctx ret args] ]
     | TGlobal(global) -> types_evar ctx.attrs (find global)
 
-  and func_ctype ?(evar=foreign_evar) ~ctx ret args = 
+  and func_ctype ?(evar=foreignfn_evar) ~ctx ret args = 
     let args = if args = [] then [TVoid] else args in
     let fsig = 
       List.fold_right (fun a r -> carrow ~evar ~attrs:ctx.attrs (ctype ~ctx a) r) args 
@@ -395,6 +395,8 @@ module Make(Clang : Coc_clang.S) = struct
     (* now create the name of the forward declaration *)
     let g = List.map (function (n,m,g) -> ctx.mangle n, m, g) g in
 
+    let () = List.iter (fun (n,m,_) -> L.info "%s -> %s" n m) g in
+
     g
 
   let global_bindings_map ~loc builtins globals =
@@ -488,7 +490,7 @@ module Make(Clang : Coc_clang.S) = struct
         when ctx.attrs.gendecls && ctx.gendecl loc name -> 
         Some(b1, gen_cvar ~ctx name typ)
 
-      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic=false} } 
+      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic(*=false*)} } 
         when ctx.attrs.gendecls && ctx.gendecl loc name -> 
         Some(b1, gen_cfn ~ctx ret name args)
 
