@@ -1,17 +1,19 @@
 (* types *)
-{ccode| #include <ncurses.h> |ccode}
+[%ccode 
+  {| #include <ncurses.h> |}
   [@clangargs ["-I/usr/lib/clang/3.8/include"]]
-  [@onlytypes]
+  [@onlytypes]]
 
 (* variables and functions *)
 module Bindings(F : Cstubs.FOREIGN) = struct
 
-  {ccode| #include <ncurses.h> |ccode}
+  [%ccode 
+    {| #include <ncurses.h> |}
     [@clangargs ["-I/usr/lib/clang/3.8/include"]]
     [@foreignmodule "F"] 
     [@foreignfnmodule "F"] 
     [@onlydecls]
-    [@excludedecls [".*:_.*";".*:trace"]]
+    [@excludedecls [".*:_.*";".*:trace"]]]
 
 end
 

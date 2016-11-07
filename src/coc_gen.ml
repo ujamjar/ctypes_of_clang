@@ -44,10 +44,11 @@ module Make(Clang : Coc_clang.S) = struct
         mutable foreignmodule : string;
         mutable foreignfnmodule : string;
         mutable typesmodule : string;
-        mutable gentypes : bool;
-        mutable gendecls : bool;
+        mutable funptr : string;
         mutable staticstructs : bool;
         mutable deferbindingexn : bool;
+        mutable gentypes : bool;
+        mutable gendecls : bool;
         mutable excludedecls : string list;
         mutable includedecls : string list;
         mutable excludetypes : string list;
@@ -72,10 +73,11 @@ module Make(Clang : Coc_clang.S) = struct
           foreignmodule = "Foreign";
           foreignfnmodule = "Ctypes";
           typesmodule = "";
-          gentypes = true;
-          gendecls = true;
+          funptr = "Ctypes.static_funptr";
           staticstructs = false;
           deferbindingexn = false;
+          gentypes = true;
+          gendecls = true;
           excludedecls = [];
           includedecls = [];
           excludetypes = [];
@@ -99,17 +101,20 @@ module Make(Clang : Coc_clang.S) = struct
         | ({txt="typesmodule";loc}, PStr [ [%stri [%e? args]] ]) -> 
           attrs.typesmodule <- get_str loc args
 
-        | ({txt="onlytypes";loc}, _) -> 
-          attrs.gendecls <- false;
-
-        | ({txt="onlydecls";loc}, _) -> 
-          attrs.gentypes <- false;
+        | ({txt="funptr";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.funptr <- get_str loc args
 
         | ({txt="deferbindingexn";loc}, _) -> 
           attrs.deferbindingexn <- true;
 
         | ({txt="staticstructs";loc}, _) -> 
           attrs.staticstructs <- true;
+
+        | ({txt="onlytypes";loc}, _) -> 
+          attrs.gendecls <- false;
+
+        | ({txt="onlydecls";loc}, _) -> 
+          attrs.gentypes <- false;
 
         | ({txt="logfile";loc}, PStr [ [%stri [%e? args]] ]) -> begin
           let logfile = open_out (get_str loc args) in
@@ -207,7 +212,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TEnum{global} -> [%expr [%e types_evar ctx.attrs (find global)].ctype]
     | TFuncPtr{ret;args;variadic} | TFuncProto{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
-      else [%expr [%e ctypes_evar ctx.attrs "static_funptr"] 
+      else [%expr [%e evar ctx.attrs.funptr] 
                     [%e func_ctype ~evar:ctypes_evar ~ctx ret args] ]
     | TGlobal(global) -> types_evar ctx.attrs (find global)
 
@@ -554,8 +559,8 @@ module Make(Clang : Coc_clang.S) = struct
 
         match expr with
 
-        | {pexp_desc=Pexp_constant(Pconst_string(code,Some("ccode")));
-                       pexp_loc=loc; pexp_attributes=attrs} ->
+        | [%expr [%ccode [%e? {pexp_desc=Pexp_constant(Pconst_string(code,_));
+                               pexp_loc=loc; pexp_attributes=attrs}]]] ->
           let ctx = init_ctx loc attrs in
           snd @@ List.hd @@ List.rev @@ gen_ccode ~ctx ~code 
 
@@ -566,8 +571,8 @@ module Make(Clang : Coc_clang.S) = struct
       structure = begin fun mapper items ->
         match items with
 
-        | [%stri [%e? {pexp_desc=Pexp_constant(Pconst_string(code,Some("ccode")));
-                       pexp_loc=loc; pexp_attributes=attrs}]] :: rest ->
+        | [%stri [%ccode [%e? {pexp_desc=Pexp_constant(Pconst_string(code,_));
+                               pexp_loc=loc; pexp_attributes=attrs}]]] :: rest ->
           let ctx = init_ctx loc attrs in
           ccode ~ctx ~code @ mapper.structure mapper rest
 
