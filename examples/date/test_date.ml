@@ -5,6 +5,8 @@ open Date
 module Fns = Bindings(Date_stubs)
 open Fns
 
+let cstr = coerce (ptr char) string
+
 let () = begin
   let timep = allocate_n ~count:1 time_t in
   let time = time timep in

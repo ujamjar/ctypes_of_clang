@@ -30,18 +30,6 @@ let ldouble =
   let () = seal x in
   x
 
-let rec cstr_length p = 
-  let c = !@ p in 
-  if Char.code c = 0 then 0 else 1 + cstr_length (p +@ 1)
-
-let rec cstr p = 
-  let l = cstr_length p in
-  let s = Bytes.make l (Char.chr 0) in
-  for i=0 to l-1 do
-    Bytes.set s i @@  (!@ (p +@ i))
-  done;
-  s
-
 open Ctypes_static
 
 let rec field : type t a. offset:int -> t typ -> string -> a typ -> (a, t) field =
