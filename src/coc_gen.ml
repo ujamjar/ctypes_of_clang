@@ -47,6 +47,9 @@ module Make(Clang : Coc_clang.S) = struct
         mutable funptr : string;
         mutable staticstructs : bool;
         mutable deferbindingexn : bool;
+        mutable viewstring : bool;
+        mutable viewstringopt : bool;
+        mutable viewint : bool;
         mutable gentypes : bool;
         mutable gendecls : bool;
         mutable excludedecls : string list;
@@ -76,6 +79,9 @@ module Make(Clang : Coc_clang.S) = struct
           funptr = "Ctypes.static_funptr";
           staticstructs = false;
           deferbindingexn = false;
+          viewstring = false;
+          viewstringopt = false;
+          viewint = false;
           gentypes = true;
           gendecls = true;
           excludedecls = [];
@@ -109,6 +115,15 @@ module Make(Clang : Coc_clang.S) = struct
 
         | ({txt="staticstructs";loc}, _) -> 
           attrs.staticstructs <- true;
+
+        | ({txt="viewstring";loc}, _) -> 
+          attrs.viewstring <- true;
+
+        | ({txt="viewstringopt";loc}, _) -> 
+          attrs.viewstringopt <- true;
+
+        | ({txt="viewint";loc}, _) -> 
+          attrs.viewint <- true;
 
         | ({txt="onlytypes";loc}, _) -> 
           attrs.gendecls <- false;
@@ -200,8 +215,12 @@ module Make(Clang : Coc_clang.S) = struct
     in
     match t with
     | TVoid -> ctypes_evar ctx.attrs "void"
+    | TBase("sint") when ctx.attrs.viewint -> ctypes_evar ctx.attrs "int"
+    | TBase("uint") when ctx.attrs.viewint -> ctypes_evar ctx.attrs "int"
     | TBase(t) -> ctypes_evar ctx.attrs t
     | TNamed(t) -> evar t
+    | TPtr(TBase("char")) when ctx.attrs.viewstring -> ctypes_evar ctx.attrs "string"
+    | TPtr(TBase("char")) when ctx.attrs.viewstringopt -> ctypes_evar ctx.attrs "string_opt"
     | TPtr(t) -> [%expr [%e ctypes_evar ctx.attrs "ptr"] [%e ctype ~ctx t]]
     | TArray(t,s) -> 
       if s = 0 then ctype ~ctx (TPtr(t))

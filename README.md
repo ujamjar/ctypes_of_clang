@@ -130,13 +130,25 @@ val convi : unit ptr -> int = <fun>
 Various attributes can be attached to the string containing c-code to control
 the conversion process.
 
-* `[@clangargs <string-list>]` arguments passed to the clang c-compiler
-* `[@ctypesmodule <string>]`, `[@foreignmodule <string>]`, `[@foreignfnmodule <string>]`, `[@typesmodule <string>]` control access to various ctypes modules.  _This will probably be simplified to just support Foreign and Cstubs generation._
-* `[@funptr <string>]` when callbacks are described by default we use `Ctypes.static_funptr`.  This option can override that choice ie to use `Foreign.funptr`.
-* `[@staticstructs]` extract alignment/size/offset information from clang, rather than infer it using ctypes.
-* `[@deferbindingexn]` (Foreign only) wrap functions and capture binding exceptions so they occur when the function is called rather than when bound
-* `[@gentypes]`, `[@gendecls]` only generate types (structs, enums, typedefs etc) or declarations (functions and variables).
-* `[@includedecls <string-list>]`, `[@excludedecls <string-list>]`, `[@includetypes <string-list>]`, `[@excludetypes <string-list>]` control generation of bindings.
+| Attribute | Description |
+|---|---|
+| `[@clangargs <string-list>]` | arguments passed to the clang c-compiler |
+| `[@ctypesmodule <string>]` | Alias for `Ctypes` module |
+| `[@foreignmodule <string>]` | Alias for `Foreign` module |
+| `[@foreignfnmodule <string>]` | Alias for `(@->)` and `returning` use for top level bindings |
+| `[@typesmodule <string>]` | Module containing (pre-)generated types |
+| `[@funptr <string>]` | callbacks are described using `Ctypes.static_funptr`.  This option can override that choice ie to use `Foreign.funptr`. |
+| `[@staticstructs]` extract alignment/size/offset information from clang, rather than infer it using ctypes. |
+| `[@deferbindingexn]` | _Foreign only_ wrap functions and capture binding exceptions so they occur when the function is called rather than when bound |
+| `[@viewstring] | map pointer to char to `string` view |
+| `[@viewstringopt] | map pointer to char to `string_opt` view |
+| `[@viewint] | map signed and unsigned int to `int` view |
+| `[@gentypes]` | only generate types (structs, enums, typedefs etc) |
+| `[@gendecls]` | only generate  declarations (functions and variables). |
+| `[@includedecls <string-list>]` ||
+| `[@excludedecls <string-list>]` || 
+| `[@includetypes <string-list>]` || 
+| `[@excludetypes <string-list>]` | control generation of bindings. |
 
 ### Controlling conversion
 
