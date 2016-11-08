@@ -34,6 +34,8 @@ module Make(Clang : Coc_clang.S) : sig
 
   val name_of_global : global -> string
 
+  val loc_of_global : global -> Loc.t
+
   val string_of_global : global -> string
 
   val string_of_typ : typ -> string

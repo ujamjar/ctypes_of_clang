@@ -5,9 +5,10 @@
 <src/{coc_clang,coc_runtime}.{ml,mli}>: package(ctypes.foreign)
 
 "tools": include
-<tools/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog)
-<tools/*.{ml,mli,byte}>: package(ctypes.foreign), clang
-<tools/ppx_coc.byte>: package(compiler-libs), package(ppx_tools), package(humane_re)
+<tools/*.{ml,mli,cmi,cmo,byte,top}>: package(rresult), package(dolog), package(compiler-libs)
+<tools/*.{ml,mli}>: package(ctypes.foreign)
+<tools/*.byte>: clang, package(ctypes.foreign), package(compiler-libs), package(ppx_tools), package(humane_re)
+<tools/gencstdlib.*>: package(ppx_tools.metaquot)
 
 "examples/foo": include
 "examples/foo/foo.ml": ppx(./tools/ppx_coc.byte), use_foo

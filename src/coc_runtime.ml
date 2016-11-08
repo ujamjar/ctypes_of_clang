@@ -12,17 +12,6 @@ type ('e,'p) rt_enum =
   }
 
 open Ctypes
-
-(* my understanding of how it works on linux *)
-let __builtin_va_list = 
-  let x = structure "__builtin_va_list" in
-  let _ = field x "f0" int in
-  let _ = field x "f1" int in
-  let _ = field x "f2" (ptr void) in
-  let _ = field x "f3" (ptr void) in
-  let () = seal x in
-  x
-
 open Ctypes_static
 
 let rec field : type t a. offset:int -> t typ -> string -> a typ -> (a, t) field =
@@ -63,3 +52,26 @@ let rec seal : type a. size:int -> align:int -> a typ -> unit =
   end
   | View { ty } -> seal ~size ~align ty
   | _ -> raise (Unsupported "Sealing a non-structured type")
+
+module type Foreign_options = sig
+  val from : Dl.library option
+  val stub : bool
+end
+
+module Make_foreign(Options : Foreign_options) : Cstubs.FOREIGN
+  with type 'a result = 'a
+   and type 'a return = 'a =
+struct
+  open Options
+  type 'a fn = 'a Ctypes.fn
+  type 'a return = 'a
+  let (@->) = Ctypes.(@->)
+  let returning = Ctypes.returning
+
+  type 'a result = 'a
+  let foreign name fn = Foreign.foreign ~stub ?from name fn
+  let foreign_value name fn = Foreign.foreign_value ?from name fn
+end
+
+module Ffi_foreign = Make_foreign(struct let from = None let stub = true end)
+

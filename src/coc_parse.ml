@@ -59,6 +59,14 @@ module Make(Clang : Coc_clang.S) = struct
     | GFunc {name} -> fst name
     | GBuiltin {name} -> name
 
+  let loc_of_global = function
+    | GComp {loc} 
+    | GEnum {loc} 
+    | GTypedef {loc} 
+    | GVar {loc} 
+    | GFunc {loc} -> loc 
+    | GBuiltin _ -> failwith "loc_of_global"
+
   let string_of_loc l = Printf.sprintf "%s:%i:%i" l.Loc.file l.Loc.line l.Loc.col
   let sloc = string_of_loc
 

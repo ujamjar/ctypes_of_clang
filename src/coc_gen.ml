@@ -29,7 +29,9 @@ module Make(Clang : Coc_clang.S) = struct
 
   let error ?loc str = 
     let loc = match loc with Some(loc) -> loc | None -> !default_loc in
-    Printf.kprintf (fun str -> raise (Location.Error(Location.error ~loc str))) str
+    Printf.kprintf (fun str -> 
+      L.error "%s" str;
+      raise (Location.Error(Location.error ~loc str))) str
 
   let cerror ?loc errors = 
     error ?loc
@@ -69,29 +71,30 @@ module Make(Clang : Coc_clang.S) = struct
         h :: get_str_list loc t
       | _ -> error ~loc "expecting list of strings"
 
+    let def_attrs () =
+      {
+        clangargs = [];
+        ctypesmodule = "Ctypes";
+        foreignmodule = "Foreign";
+        foreignfnmodule = "Ctypes";
+        typesmodule = "";
+        funptr = "Ctypes.static_funptr";
+        staticstructs = false;
+        deferbindingexn = false;
+        viewstring = false;
+        viewstringopt = false;
+        viewint = false;
+        doccomments = false;
+        gentypes = true;
+        gendecls = true;
+        excludedecls = [];
+        includedecls = [];
+        excludetypes = [];
+        includetypes = [];
+      }
+
     let get a = 
-      let attrs = 
-        {
-          clangargs = [];
-          ctypesmodule = "Ctypes";
-          foreignmodule = "Foreign";
-          foreignfnmodule = "Ctypes";
-          typesmodule = "";
-          funptr = "Ctypes.static_funptr";
-          staticstructs = false;
-          deferbindingexn = false;
-          viewstring = false;
-          viewstringopt = false;
-          viewint = false;
-          doccomments = false;
-          gentypes = true;
-          gendecls = true;
-          excludedecls = [];
-          includedecls = [];
-          excludetypes = [];
-          includetypes = [];
-        }
-      in
+      let attrs = def_attrs () in
       let rec get_attr = function
 
         | ({txt="clangargs";loc}, PStr [ [%stri [%e? args]] ]) -> 
@@ -479,57 +482,55 @@ module Make(Clang : Coc_clang.S) = struct
   let gen_ctypedef ~ctx name typ = 
     [%expr [%e ctypes_evar ctx.attrs "typedef"] [%e ctype ~ctx typ] [%e str name]]
 
+  (* forward declaration of structs (which may be recursively defined) *)
+  let fwd_decl ~ctx (b0, b1, global) = 
+    match global with
+
+    | GComp {loc; name=(name,_); kind} 
+      when ctx.attrs.gentypes && ctx.gentype loc name -> 
+      Some(global, b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
+   
+    | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
+
+    | _ -> None
+
+  (* declarations *)
+  let gen_decl ~ctx (b0, b1, global) = 
+    match global with
+
+    | GComp { loc; name=(name,_); clayout } 
+      when ctx.attrs.gentypes && ctx.gentype loc name ->
+      let members = get_members ~ctx global in
+      if ctx.attrs.staticstructs then
+        Some(global, b1, gen_cstruct_static ~ctx b0 name members clayout)
+      else
+        Some(global, b1, gen_cstruct ~ctx b0 name members)
+
+    | GEnum { loc; name=(name,_) } 
+      when ctx.attrs.gentypes && ctx.gentype loc name ->
+      let items, kind = get_enum_items ~ctx global in
+      Some(global, b1, gen_enum ~ctx items kind)
+
+    | GTypedef { loc; name=(name,_); typ } 
+      when ctx.attrs.gentypes && ctx.gentype loc name ->
+      Some(global, b1, gen_ctypedef ~ctx name typ)
+
+    | GVar { loc; name=(name,_); typ } 
+      when ctx.attrs.gendecls && ctx.gendecl loc name -> 
+      Some(global, b1, gen_cvar ~ctx name typ)
+
+    | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic(*=false*)} } 
+      when ctx.attrs.gendecls && ctx.gendecl loc name -> 
+      Some(global, b1, gen_cfn ~ctx ret name args)
+
+    | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
+
+    | _ -> None
+
+  let fwd_decl ~ctx x = try fwd_decl ~ctx x with Global_not_found _ -> None 
+  let gen_decl ~ctx x = try gen_decl ~ctx x with Global_not_found _ -> None 
+
   let gen_ccode ~ctx ~code = 
-
-    (* forward declaration of structs (which may be recursively defined) *)
-    let fwd_decl ~ctx (b0, b1, global) = 
-      match global with
-
-      | GComp {loc; name=(name,_); kind} 
-        when ctx.attrs.gentypes && ctx.gentype loc name -> 
-        Some(global, b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
-     
-      | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
-
-      | _ -> None
-    in
-
-    (* declarations *)
-    let gen_decl ~ctx (b0, b1, global) = 
-      match global with
-
-      | GComp { loc; name=(name,_); clayout } 
-        when ctx.attrs.gentypes && ctx.gentype loc name ->
-        let members = get_members ~ctx global in
-        if ctx.attrs.staticstructs then
-          Some(global, b1, gen_cstruct_static ~ctx b0 name members clayout)
-        else
-          Some(global, b1, gen_cstruct ~ctx b0 name members)
-
-      | GEnum { loc; name=(name,_) } 
-        when ctx.attrs.gentypes && ctx.gentype loc name ->
-        let items, kind = get_enum_items ~ctx global in
-        Some(global, b1, gen_enum ~ctx items kind)
-
-      | GTypedef { loc; name=(name,_); typ } 
-        when ctx.attrs.gentypes && ctx.gentype loc name ->
-        Some(global, b1, gen_ctypedef ~ctx name typ)
-
-      | GVar { loc; name=(name,_); typ } 
-        when ctx.attrs.gendecls && ctx.gendecl loc name -> 
-        Some(global, b1, gen_cvar ~ctx name typ)
-
-      | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic(*=false*)} } 
-        when ctx.attrs.gendecls && ctx.gendecl loc name -> 
-        Some(global, b1, gen_cfn ~ctx ret name args)
-
-      | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
-
-      | _ -> None
-    in
-
-    let fwd_decl ~ctx x = try fwd_decl ~ctx x with Global_not_found _ -> None in
-    let gen_decl ~ctx x = try gen_decl ~ctx x with Global_not_found _ -> None in
 
     run ~ctx ~code @@ fun c_ctx -> 
       let globals = mangle_declarations ~ctx c_ctx.globals in
@@ -561,10 +562,7 @@ module Make(Clang : Coc_clang.S) = struct
           [%stri let [%p pvar ctx.loc name] = [%e expr]]
     ) code
 
-  let builtins = 
-    [ 
-      GBuiltin{name="__builtin_va_list"; typ=TNamed("Coc_runtime.__builtin_va_list")} 
-    ]
+  (*let builtins = [ GBuiltin{name="__builtin_va_list"; typ=TNamed("Coc_runtime.__builtin_va_list")} ]*)
 
   let genglobal exc inc = 
     let exc = List.map Humane_re.Str.regexp exc in
@@ -578,21 +576,20 @@ module Make(Clang : Coc_clang.S) = struct
        if chk false exc then false
        else chk true inc)
 
+  let init_ctx loc attrs = 
+    let mangle = Coc_ident.make initial_mangler in
+    {
+      loc; attrs;
+      mangle = (fun s -> mangle (ocaml_lid s));
+      global_to_binding = G.empty;
+      builtins=[];
+      comp_members_map = TypeMap.empty;
+      enum_items_map = TypeMap.empty;
+      gendecl = genglobal attrs.excludedecls attrs.includedecls;
+      gentype = genglobal attrs.excludetypes attrs.includetypes;
+    }
+ 
   let coc_mapper argv = 
-    let init_ctx loc attrs = 
-      let mangle = Coc_ident.make initial_mangler in
-      let attrs = Attrs.get attrs in 
-      {
-        loc; attrs;
-        mangle = (fun s -> mangle (ocaml_lid s));
-        global_to_binding = G.empty;
-        builtins=[];
-        comp_members_map = TypeMap.empty;
-        enum_items_map = TypeMap.empty;
-        gendecl = genglobal attrs.excludedecls attrs.includedecls;
-        gentype = genglobal attrs.excludetypes attrs.includetypes;
-      }
-    in
 
     { default_mapper with
 
@@ -602,7 +599,7 @@ module Make(Clang : Coc_clang.S) = struct
 
         | [%expr [%ccode [%e? {pexp_desc=Pexp_constant(Pconst_string(code,_));
                                pexp_loc=loc; pexp_attributes=attrs}]]] ->
-          let ctx = init_ctx loc attrs in
+          let ctx = init_ctx loc (Attrs.get attrs) in
           let (_,_,e) = List.hd @@ List.rev @@ gen_ccode ~ctx ~code in
           e
 
@@ -615,7 +612,7 @@ module Make(Clang : Coc_clang.S) = struct
 
         | [%stri [%ccode [%e? {pexp_desc=Pexp_constant(Pconst_string(code,_));
                                pexp_loc=loc; pexp_attributes=attrs}]]] :: rest ->
-          let ctx = init_ctx loc attrs in
+          let ctx = init_ctx loc (Attrs.get attrs) in
           ccode ~ctx ~code @ mapper.structure mapper rest
 
         | h::rest -> mapper.structure_item mapper h :: mapper.structure mapper rest

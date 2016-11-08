@@ -3,7 +3,7 @@ all: lib
 tests: foo date ncurses
 
 lib:
-	ocamlbuild ctypes_of_clang.cma ctypes_of_clang.cmxa ppx_coc.byte
+	ocamlbuild ctypes_of_clang.cma ctypes_of_clang.cmxa ppx_coc.byte 
 
 tools: 
 	ocamlbuild genenums.byte info.byte extract.byte 
@@ -16,6 +16,10 @@ date: lib
 
 ncurses: lib
 	ocamlbuild test_ncurses.byte test_ncurses.native
+
+cstdlib:
+	ocamlbuild gencstdlib.byte
+	./gencstdlib.byte > lib/cstdlib.ml
 
 clean:
 	ocamlbuild -clean
