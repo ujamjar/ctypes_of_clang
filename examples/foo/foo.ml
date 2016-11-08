@@ -1,6 +1,6 @@
 [%ccode 
   {| #include "examples/foo/foo.h" |}
-  [@onlytypes]]
+    [@onlytypes][@viewint]]
 
 module Bindings (F : Cstubs.FOREIGN) = struct
 
@@ -8,7 +8,8 @@ module Bindings (F : Cstubs.FOREIGN) = struct
     {| #include "examples/foo/foo.h" |}
     [@foreignmodule "F"]
     [@foreignfnmodule "F"]
-    [@onlydecls]]
+    [@onlydecls]
+    [@viewint]]
 
 end
 

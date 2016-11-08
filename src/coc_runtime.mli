@@ -13,8 +13,6 @@ type ('e,'p) rt_enum =
 
 val __builtin_va_list : [`__builtin_va_list] Ctypes.structure Ctypes.typ
 
-val ldouble : [`ldouble] Ctypes.structure Ctypes.typ
-
 val field : offset:int -> 't Ctypes.typ -> string -> 'a Ctypes.typ -> 
             ('a, (('s, [<`Struct | `Union]) Ctypes_static.structured as 't)) Ctypes.field
 

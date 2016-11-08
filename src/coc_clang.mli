@@ -81,6 +81,7 @@ module type S = sig
     val offset : ctyp -> string -> int
     val pointee_type : ctyp -> ctyp
     val elem_type : ctyp -> ctyp
+    val array_elem_type : ctyp -> ctyp
     val array_size : ctyp -> int
     val canonical_type : ctyp -> ctyp
     val is_variadic : ctyp -> bool

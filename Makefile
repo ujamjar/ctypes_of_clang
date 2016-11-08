@@ -1,5 +1,6 @@
-.PHONY: tools clean all lib
-all: lib tools 
+.PHONY: tools clean all lib tests
+all: lib
+tests: foo date ncurses
 
 lib:
 	ocamlbuild ctypes_of_clang.cma ctypes_of_clang.cmxa ppx_coc.byte

@@ -122,6 +122,7 @@ module Make(Clang : Coc_clang.S) = struct
     let llong = TBase("llong")
     let float = TBase("float")
     let double = TBase("double")
+    let ldouble = TBase("ldouble")
   end
 
   let rec conv_typ ctx typ cursor = 
@@ -142,10 +143,16 @@ module Make(Clang : Coc_clang.S) = struct
     | T.LongLong -> BT.llong
     | T.Float -> BT.float
     | T.Double -> BT.double
-    | T.Bool -> BT.char (* XXX *)
+    | T.Bool -> BT.char 
+    | T.LongDouble -> BT.ldouble
 
-    (* XXX *)
-    | T.LongDouble -> TNamed("Coc_runtime.ldouble")
+    | T.Complex -> begin
+      match Type.kind @@ Type.elem_type typ with
+      | T.Float -> TBase "complex32"
+      | T.Double -> TBase "complex64"
+      | T.LongDouble -> TBase "complexld"
+      | _ as k -> raise (Unsupported_type ("complex: " ^ T.to_string k))
+    end
   
     | T.FunctionProto | T.FunctionNoProto -> 
       let ret, args, variadic = conv_func_sig ctx typ cursor in
@@ -157,10 +164,10 @@ module Make(Clang : Coc_clang.S) = struct
     | T.Record | T.Unexposed | T.Enum | T.Typedef -> conv_decl_typ ctx (Type.declaration typ) 
 
     | T.DependentSizedArray | T.IncompleteArray ->
-      TArray(conv_typ ctx (Type.elem_type typ) cursor, 0)
+      TArray(conv_typ ctx (Type.array_elem_type typ) cursor, 0)
 
     | T.ConstantArray -> 
-      TArray(conv_typ ctx (Type.elem_type typ) cursor, Type.array_size typ)
+      TArray(conv_typ ctx (Type.array_elem_type typ) cursor, Type.array_size typ)
 
     (* VariableArray, Vector, Int128, UInt128 *)
     (* Bool, WChar, LongDouble *)

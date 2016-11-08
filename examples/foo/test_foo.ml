@@ -13,7 +13,6 @@ let () = print_foo c
 let c = add_foo a b 
 
 let coerce t fn = coerce (Foreign.funptr t) (static_funptr t) fn
-
 let cb_t = int @-> returning int
                   
 let c = map_foo_a c (coerce cb_t incr)

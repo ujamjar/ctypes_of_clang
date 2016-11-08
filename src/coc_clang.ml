@@ -69,6 +69,7 @@ module type S = sig
     val offset : ctyp -> string -> int
     val pointee_type : ctyp -> ctyp
     val elem_type : ctyp -> ctyp
+    val array_elem_type : ctyp -> ctyp
     val array_size : ctyp -> int
     val canonical_type : ctyp -> ctyp
     val is_variadic : ctyp -> bool
@@ -303,7 +304,9 @@ module Make(X : Dllib) = struct
 
     let pointee_type = c2c "clang_getPointeeType" 
 
-    let elem_type = c2c "clang_getArrayElementType"
+    let elem_type = c2c "clang_getElementType"
+
+    let array_elem_type = c2c "clang_getArrayElementType"
 
     let array_size = c2ll "clang_getArraySize" >> Int64.to_int
 

@@ -23,13 +23,6 @@ let __builtin_va_list =
   let () = seal x in
   x
 
-let ldouble = 
-  let x = structure "ldouble" in
-  let _ = field x "f0" llong in
-  let _ = field x "f1" llong in
-  let () = seal x in
-  x
-
 open Ctypes_static
 
 let rec field : type t a. offset:int -> t typ -> string -> a typ -> (a, t) field =
