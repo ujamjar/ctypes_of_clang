@@ -135,25 +135,27 @@ the conversion process.
 | `[@clangargs <string-list>]` | arguments passed to the clang c-compiler |
 | `[@ctypesmodule <string>]` | Alias for `Ctypes` module |
 | `[@foreignmodule <string>]` | Alias for `Foreign` module |
-| `[@foreignfnmodule <string>]` | Alias for `(@->)` and `returning` use for top level bindings |
+| `[@foreignfnmodule <string>]` | Alias for `(@->)` and `returning` used for top level bindings |
 | `[@typesmodule <string>]` | Module containing (pre-)generated types |
 | `[@funptr <string>]` | callbacks are described using `Ctypes.static_funptr`.  This option can override that choice ie to use `Foreign.funptr`. |
-| `[@staticstructs]` extract alignment/size/offset information from clang, rather than infer it using ctypes. |
+| `[@staticstructs]` | extract alignment/size/offset information from clang, rather than infer it using ctypes. |
 | `[@deferbindingexn]` | _Foreign only_ wrap functions and capture binding exceptions so they occur when the function is called rather than when bound |
-| `[@viewstring] | map pointer to char to `string` view |
-| `[@viewstringopt] | map pointer to char to `string_opt` view |
-| `[@viewint] | map signed and unsigned int to `int` view |
+| `[@viewstring]` | map pointer to char to `string` view |
+| `[@viewstringopt]` | map pointer to char to `string_opt` view |
+| `[@viewint]` | map signed and unsigned int to `int` view |
+| `[@doccomment]` | generate @@ocaml.doc comments with declaration info |
 | `[@gentypes]` | only generate types (structs, enums, typedefs etc) |
 | `[@gendecls]` | only generate  declarations (functions and variables). |
-| `[@includedecls <string-list>]` ||
+| `[@includedecls <string-list>]` |control generation of bindings. |
 | `[@excludedecls <string-list>]` || 
 | `[@includetypes <string-list>]` || 
-| `[@excludetypes <string-list>]` | control generation of bindings. |
+| `[@excludetypes <string-list>]` ||
 
 ### Controlling conversion
 
-The include/exclude types and decls attributes allow specification of what should be
-converted.  Each specify a list of regular expressions in `Humane_re` form.
+The include/exclude types and decls attributes allow specification of which 
+definitions should be converted.  Each specify a list of regular expressions 
+in `Humane_re` form.
 
 For each definition a string is constructed with the filename and declaration 
 name seperated by a colon ie `"stdlib.h:qsort"`.  First the exclude list will 

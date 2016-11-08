@@ -50,6 +50,7 @@ module Make(Clang : Coc_clang.S) = struct
         mutable viewstring : bool;
         mutable viewstringopt : bool;
         mutable viewint : bool;
+        mutable doccomments : bool;
         mutable gentypes : bool;
         mutable gendecls : bool;
         mutable excludedecls : string list;
@@ -82,6 +83,7 @@ module Make(Clang : Coc_clang.S) = struct
           viewstring = false;
           viewstringopt = false;
           viewint = false;
+          doccomments = false;
           gentypes = true;
           gendecls = true;
           excludedecls = [];
@@ -124,6 +126,9 @@ module Make(Clang : Coc_clang.S) = struct
 
         | ({txt="viewint";loc}, _) -> 
           attrs.viewint <- true;
+
+        | ({txt="doccomments";loc}, _) -> 
+          attrs.doccomments <- true;
 
         | ({txt="onlytypes";loc}, _) -> 
           attrs.gendecls <- false;
@@ -482,7 +487,7 @@ module Make(Clang : Coc_clang.S) = struct
 
       | GComp {loc; name=(name,_); kind} 
         when ctx.attrs.gentypes && ctx.gentype loc name -> 
-        Some(b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
+        Some(global, b0, gen_cstruct_decl ~ctx b1 name kind (evar "_ctype"))
      
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
 
@@ -497,26 +502,26 @@ module Make(Clang : Coc_clang.S) = struct
         when ctx.attrs.gentypes && ctx.gentype loc name ->
         let members = get_members ~ctx global in
         if ctx.attrs.staticstructs then
-          Some(b1, gen_cstruct_static ~ctx b0 name members clayout)
+          Some(global, b1, gen_cstruct_static ~ctx b0 name members clayout)
         else
-          Some(b1, gen_cstruct ~ctx b0 name members)
+          Some(global, b1, gen_cstruct ~ctx b0 name members)
 
       | GEnum { loc; name=(name,_) } 
         when ctx.attrs.gentypes && ctx.gentype loc name ->
         let items, kind = get_enum_items ~ctx global in
-        Some(b1, gen_enum ~ctx items kind)
+        Some(global, b1, gen_enum ~ctx items kind)
 
       | GTypedef { loc; name=(name,_); typ } 
         when ctx.attrs.gentypes && ctx.gentype loc name ->
-        Some(b1, gen_ctypedef ~ctx name typ)
+        Some(global, b1, gen_ctypedef ~ctx name typ)
 
       | GVar { loc; name=(name,_); typ } 
         when ctx.attrs.gendecls && ctx.gendecl loc name -> 
-        Some(b1, gen_cvar ~ctx name typ)
+        Some(global, b1, gen_cvar ~ctx name typ)
 
       | GFunc { loc; name=(name,_); typ=TFuncPtr{ret;args;variadic(*=false*)} } 
         when ctx.attrs.gendecls && ctx.gendecl loc name -> 
-        Some(b1, gen_cfn ~ctx ret name args)
+        Some(global, b1, gen_cfn ~ctx ret name args)
 
       | GBuiltin _ -> error ~loc:ctx.loc "unexpected builtin"
 
@@ -535,9 +540,26 @@ module Make(Clang : Coc_clang.S) = struct
       } in
       fmap (fwd_decl ~ctx) globals @ fmap (gen_decl ~ctx) globals
 
+  let doc_comment = 
+    let open Clang.Loc in
+    function
+    | GComp { loc; name=(name,_) } 
+    | GEnum { loc; name=(name,_) } 
+    | GTypedef { loc; name=(name,_) } 
+    | GVar { loc; name=(name,_) } 
+    | GFunc { loc; name=(name,_) } -> 
+      Printf.sprintf " %s [%s:%i:%i] " name loc.file loc.line loc.col
+    | _ -> "???"
+
   let ccode ~ctx ~code = 
     let code = gen_ccode ~ctx ~code in
-    List.map (fun (name,expr) -> [%stri let [%p pvar ctx.loc name] = [%e expr]]) code
+    List.map (fun (global,name,expr) -> 
+        if ctx.attrs.doccomments then 
+          [%stri let [%p pvar ctx.loc name] = [%e expr]
+                  [@@ocaml.doc [%e str (doc_comment global)]]]
+        else
+          [%stri let [%p pvar ctx.loc name] = [%e expr]]
+    ) code
 
   let builtins = 
     [ 
@@ -581,7 +603,8 @@ module Make(Clang : Coc_clang.S) = struct
         | [%expr [%ccode [%e? {pexp_desc=Pexp_constant(Pconst_string(code,_));
                                pexp_loc=loc; pexp_attributes=attrs}]]] ->
           let ctx = init_ctx loc attrs in
-          snd @@ List.hd @@ List.rev @@ gen_ccode ~ctx ~code 
+          let (_,_,e) = List.hd @@ List.rev @@ gen_ccode ~ctx ~code in
+          e
 
         | _ -> default_mapper.expr mapper expr 
 

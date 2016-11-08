@@ -42,7 +42,7 @@ let ocaml_keywords =
     "downto"; "else"; "end"; "exception"; "external"; "false"; "for"; "fun";
     "function"; "functor"; "if"; "in"; "include"; "inherit"; "initializer";
     "lazy"; "let"; "match"; "method"; "module"; "mutable"; "new"; "object";
-    "of"; "open"; "or"; "private"; "rec"; "sig"; "struct"; "then"; "to";
+    "of"; "open"; "or"; "private"; "rec"; "raise"; "sig"; "struct"; "then"; "to";
     "true"; "try"; "type"; "val"; "virtual"; "when"; "while"; "with";
   ]
 

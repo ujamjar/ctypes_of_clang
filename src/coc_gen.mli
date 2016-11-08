@@ -23,7 +23,7 @@ module Make(Clang : Coc_clang.S) : sig
     }
 
   val gen_ccode : ctx:t -> code:string -> 
-    (string * Parsetree.expression) list
+    (Cparse.global * string * Parsetree.expression) list
 
   val ccode : ctx:t -> code:string -> 
     Parsetree.structure_item list
