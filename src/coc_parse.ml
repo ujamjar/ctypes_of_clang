@@ -38,7 +38,7 @@ module Make(Clang : Coc_clang.S) = struct
   and typ = 
     | TVoid
     | TBase of string
-    | TNamed of string
+    | TNamed of string * bool
     | TGlobal of global 
     | TArray of typ * int
     | TPtr of typ 
@@ -91,7 +91,7 @@ module Make(Clang : Coc_clang.S) = struct
   and string_of_typ = function
     | TVoid -> "void"
     | TBase s -> s
-    | TNamed s -> s
+    | TNamed(s,_) -> s
     | TGlobal g -> name_of_global g
     | TArray(typ,size) -> string_of_typ typ ^ "[" ^ string_of_int size ^ "]"
     | TPtr typ -> string_of_typ typ ^ "*"
@@ -110,7 +110,7 @@ module Make(Clang : Coc_clang.S) = struct
     {
       decls : (cursor * global) list;
       globals : global list;
-      builtins : global list;
+      builtins : (global * string) list;
       comp_members_map : member list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
       id : unit -> int;
@@ -244,18 +244,42 @@ module Make(Clang : Coc_clang.S) = struct
     let ret = conv_typ ctx (Type.ret_type typ) cursor in
     ret, args, Type.is_variadic typ 
 
+  and builtin ~p (g,d) = 
+    let mk (name,_) ct = 
+      Some(GBuiltin{name; typ=TNamed(d,ct)}) 
+    in
+    match g with
+    | GComp{loc;name;kind=Struct} when p loc name K.StructDecl -> mk name true
+    | GComp{loc;name;kind=Union} when p loc name K.UnionDecl -> mk name true
+    | GEnum{loc;name} when p loc name K.EnumDecl -> mk name false
+    | GTypedef{loc;name} when p loc name K.TypedefDecl -> mk name false
+    | GFunc{loc;name} when p loc name K.FunctionDecl -> mk name false
+    | GVar {loc;name} when p loc name K.VarDecl -> mk name false
+    | _ -> None
+
+  and builtin_of_cursor ctx c = 
+    let g = 
+      let cursor_name = Cursor.spelling c in
+      let cursor_kind = Cursor.kind c in
+      let cursor_loc = Loc.location @@ Cursor.location c in
+      let check loc (name,_) kind = loc=cursor_loc && name=cursor_name && kind=cursor_kind in
+      let rec g = function
+        | [] -> None
+        | h :: t -> (match builtin ~p:check h with None -> g t | _ as x -> x)
+      in
+      g 
+    in
+    if ctx.builtins = [] then None else g ctx.builtins
+
   (* find global declaration from cursor - first look at builtins *)
   and global_of_cursor ctx c = 
-    let cursor_name = Cursor.spelling c in
-    let rec f = function [] -> raise (Global_not_found cursor_name)
+    let rec f = function [] -> raise (Global_not_found (Cursor.spelling c))
                        | (c',g)::t when Cursor.equal c c' -> g 
                        | _ :: t -> f t 
     in
-    let rec g = function [] -> f ctx.decls
-                       | (GBuiltin{name;typ} as g) :: t when name = cursor_name -> g
-                       | _ :: t -> g t
-    in
-    g ctx.builtins
+    match builtin_of_cursor ctx c with
+    | None -> f ctx.decls
+    | Some(g) -> g
 
   let to_kind = function K.StructDecl -> Struct | K.UnionDecl -> Union 
                        | _ -> raise Invalid_composite_kind

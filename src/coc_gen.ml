@@ -55,6 +55,8 @@ module Make(Clang : Coc_clang.S) = struct
         mutable doccomments : bool;
         mutable gentypes : bool;
         mutable gendecls : bool;
+        mutable saveglobals : string option;
+        mutable loadglobals : (string * string) list;
         mutable excludedecls : string list;
         mutable includedecls : string list;
         mutable excludetypes : string list;
@@ -87,6 +89,8 @@ module Make(Clang : Coc_clang.S) = struct
         doccomments = false;
         gentypes = true;
         gendecls = true;
+        saveglobals = None;
+        loadglobals = [];
         excludedecls = [];
         includedecls = [];
         excludetypes = [];
@@ -139,6 +143,12 @@ module Make(Clang : Coc_clang.S) = struct
         | ({txt="onlydecls";loc}, _) -> 
           attrs.gentypes <- false;
 
+        | ({txt="saveglobals";loc}, PStr [ [%stri [%e? args]] ]) -> 
+          attrs.saveglobals <- Some(get_str loc args)
+
+        | ({txt="loadglobals";loc}, PStr [ [%stri ([%e? fname], [%e? path])] ]) -> 
+          attrs.loadglobals <- (get_str loc fname, get_str loc path) :: attrs.loadglobals
+
         | ({txt="logfile";loc}, PStr [ [%stri [%e? args]] ]) -> begin
           let logfile = open_out (get_str loc args) in
           Log.set_log_level Log.WARN;
@@ -188,8 +198,8 @@ module Make(Clang : Coc_clang.S) = struct
       loc : Location.t;
       attrs : Attrs.t;
       mangle : string -> string;
-      global_to_binding : string G.t;
-      builtins : global list;
+      global_to_binding : (string * bool) G.t;
+      builtins : (global * string) list;
       comp_members_map : member list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
       gendecl : Clang.Loc.t -> string -> bool;
@@ -217,16 +227,18 @@ module Make(Clang : Coc_clang.S) = struct
 
   let rec ctype ~ctx t =
     let find g = 
-      try G.find g ctx.global_to_binding
+      try 
+        let n,c = G.find g ctx.global_to_binding in
+        let e = types_evar ctx.attrs n in
+        if c then [%expr [%e e].Coc_runtime.ctype] else e
       with _ -> raise (Global_not_found (name_of_global g))
-        (*error ~loc:ctx.loc "ctype: cannot find %s" (name_of_global g)*)
     in
     match t with
     | TVoid -> ctypes_evar ctx.attrs "void"
     | TBase("sint") when ctx.attrs.viewint -> ctypes_evar ctx.attrs "int"
     | TBase("uint") when ctx.attrs.viewint -> ctypes_evar ctx.attrs "int"
     | TBase(t) -> ctypes_evar ctx.attrs t
-    | TNamed(t) -> evar t
+    | TNamed(t,c) -> if c then [%expr [%e evar t].Coc_runtime.ctype] else evar t
     | TPtr(TBase("char")) when ctx.attrs.viewstring -> ctypes_evar ctx.attrs "string"
     | TPtr(TBase("char")) when ctx.attrs.viewstringopt -> ctypes_evar ctx.attrs "string_opt"
     | TPtr(t) -> [%expr [%e ctypes_evar ctx.attrs "ptr"] [%e ctype ~ctx t]]
@@ -235,13 +247,13 @@ module Make(Clang : Coc_clang.S) = struct
       else [%expr [%e ctypes_evar ctx.attrs "array"] 
               [%e Ast_convenience.int s] 
               [%e ctype ~ctx t]]
-    | TComp{global} -> types_evar ctx.attrs (find global)
-    | TEnum{global} -> [%expr [%e types_evar ctx.attrs (find global)].ctype]
+    | TComp{global} -> find global
+    | TEnum{global} -> [%expr [%e find global].ctype]
     | TFuncPtr{ret;args;variadic} | TFuncProto{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
       else [%expr [%e evar ctx.attrs.funptr] 
                     [%e func_ctype ~evar:ctypes_evar ~ctx ret args] ]
-    | TGlobal(global) -> types_evar ctx.attrs (find global)
+    | TGlobal(global) -> find global
 
   and func_ctype ?(evar=foreignfn_evar) ~ctx ret args = 
     let args = if args = [] then [TVoid] else args in
@@ -432,13 +444,20 @@ module Make(Clang : Coc_clang.S) = struct
     g
 
   let global_bindings_map ~loc builtins globals =
-    let map = List.fold_left 
-      (fun map -> function (GBuiltin{name;typ=TNamed(oname)} as g) -> G.add g oname map
-                         | _ -> error ~loc "") G.empty builtins
+    (*let map = List.fold_left 
+      (fun map -> function (GBuiltin{name;typ=TNamed(oname)} as g, _) -> G.add g oname map
+                         | _ -> error ~loc "expecting builtin") G.empty builtins
+    in*)
+    let map = List.fold_left
+      (fun map g ->
+        match Cparse.builtin (fun _ _ _ -> true) g with
+        | Some ((GBuiltin{typ=TNamed(d,c)}) as g) -> G.add g (d,c) map
+        | _ -> error ~loc "invalid builtin") 
+      G.empty builtins
     in
     List.fold_left 
-      (fun map -> function (n, m, (GComp _ as g)) -> G.add g n map
-                         | (n, m, (_ as g)) -> G.add g m map) map globals
+      (fun map -> function (n, m, (GComp _ as g)) -> G.add g (n,false) map
+                         | (n, m, (_ as g)) -> G.add g (m,false) map) map globals
 
   let get_members ~ctx global = 
     let aligned_array size align = 
@@ -530,6 +549,27 @@ module Make(Clang : Coc_clang.S) = struct
   let fwd_decl ~ctx x = try fwd_decl ~ctx x with Global_not_found _ -> None 
   let gen_decl ~ctx x = try gen_decl ~ctx x with Global_not_found _ -> None 
 
+  let marshal_globals ~ctx globals = 
+    match ctx.attrs.saveglobals with
+    | None -> ()
+    | Some(fname) -> begin
+      let f = open_out_bin fname in
+      Marshal.to_channel f (List.map (fun (g,n,_) -> g,n) globals) [];
+      close_out f
+    end
+
+  let unmarshal_globals ~attrs = 
+    List.flatten @@ List.map 
+      (fun (fname,path) ->
+        try
+          let f = open_in_bin fname in
+          let g : (global * string) list = Marshal.from_channel f in
+          let g = List.map (fun (g,n) -> g, _str path n) g in
+          close_in f;
+          g
+        with _ -> error "failed to load globals %s" fname) 
+      attrs.loadglobals
+
   let gen_ccode ~ctx ~code = 
 
     run ~ctx ~code @@ fun c_ctx -> 
@@ -539,7 +579,10 @@ module Make(Clang : Coc_clang.S) = struct
         comp_members_map = c_ctx.comp_members_map;
         enum_items_map = c_ctx.enum_items_map;
       } in
-      fmap (fwd_decl ~ctx) globals @ fmap (gen_decl ~ctx) globals
+      let fwd_globals = fmap (fwd_decl ~ctx) globals in
+      let gen_globals = fmap (gen_decl ~ctx) globals in
+      let () = marshal_globals ~ctx gen_globals in
+      fwd_globals @ gen_globals
 
   let doc_comment = 
     let open Clang.Loc in
@@ -578,11 +621,12 @@ module Make(Clang : Coc_clang.S) = struct
 
   let init_ctx loc attrs = 
     let mangle = Coc_ident.make initial_mangler in
+    let builtins = unmarshal_globals ~attrs in
     {
       loc; attrs;
       mangle = (fun s -> mangle (ocaml_lid s));
       global_to_binding = G.empty;
-      builtins=[];
+      builtins;
       comp_members_map = TypeMap.empty;
       enum_items_map = TypeMap.empty;
       gendecl = genglobal attrs.excludedecls attrs.includedecls;

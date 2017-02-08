@@ -24,3 +24,13 @@ cstdlib:
 clean:
 	ocamlbuild -clean
 
+install:
+	ocamlfind install coc META ppx_coc.byte \
+		_build/src/coc_runtime.mli \
+		_build/src/coc_runtime.cmi \
+		_build/src/coc_runtime.cmo \
+		_build/src/coc_runtime.cmx 
+
+uninstall:
+	ocamlfind remove coc
+

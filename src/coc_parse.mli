@@ -19,7 +19,7 @@ module Make(Clang : Coc_clang.S) : sig
   and typ = 
     | TVoid
     | TBase of string
-    | TNamed of string
+    | TNamed of string * bool
     | TGlobal of global 
     | TArray of typ * int
     | TPtr of typ 
@@ -31,6 +31,10 @@ module Make(Clang : Coc_clang.S) : sig
   and member = 
     | Field of {name:string; typ:typ; offset:int}
     | Bitfield of {name:string; typ:typ; width:int; offset:int}
+
+  val builtin : 
+    p:(Loc.t -> (string * int) -> Coc_enums.CXCursorKind.t -> bool) -> 
+    (global * string) -> global option
 
   val name_of_global : global -> string
 
@@ -48,7 +52,7 @@ module Make(Clang : Coc_clang.S) : sig
     {
       decls : (cursor * global) list;
       globals : global list;
-      builtins : global list;
+      builtins : (global * string) list;
       comp_members_map : member list TypeMap.t;
       enum_items_map : ((string * int64) list * typ) TypeMap.t;
       id : unit -> int;
@@ -73,7 +77,7 @@ module Make(Clang : Coc_clang.S) : sig
   val run : 
     ?log:bool -> ?pedantic:bool -> 
     ?unsaved:(string*string) list -> 
-    builtins:global list ->
+    builtins:(global * string) list ->
     string list -> 
     (ctx, error_msgs) result
 

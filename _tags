@@ -29,3 +29,4 @@
 <examples/ncurses/*.{c,cma,cmxa,o,so,a}>: use_ncurses
 
 "test": -traverse
+true: debug

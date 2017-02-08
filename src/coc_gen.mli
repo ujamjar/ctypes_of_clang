@@ -19,6 +19,8 @@ module Make(Clang : Coc_clang.S) : sig
         mutable doccomments : bool;
         mutable gentypes : bool;
         mutable gendecls : bool;
+        mutable saveglobals : string option;
+        mutable loadglobals : (string * string) list;
         mutable excludedecls : string list;
         mutable includedecls : string list;
         mutable excludetypes : string list;
@@ -35,8 +37,8 @@ module Make(Clang : Coc_clang.S) : sig
       loc : Location.t;
       attrs : Attrs.t;
       mangle : string -> string;
-      global_to_binding : string G.t;
-      builtins : Cparse.global list;
+      global_to_binding : (string * bool) G.t;
+      builtins : (Cparse.global * string) list;
       comp_members_map : Cparse.member list Cparse.TypeMap.t;
       enum_items_map : ((string * int64) list * Cparse.typ) Cparse.TypeMap.t;
       gendecl : Clang.Loc.t -> string -> bool;
