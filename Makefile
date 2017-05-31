@@ -19,16 +19,10 @@ examples:
 #	./gencstdlib.byte > lib/cstdlib.ml
 
 clean:
-	ocamlbuild -clean
+	rm -fr _build
 
 install:
-	ocamlfind install coc META ppx_coc.byte \
-		_build/src/coc_runtime.mli \
-		_build/src/coc_runtime.o \
-		_build/src/coc_runtime.cmi \
-		_build/src/coc_runtime.cmo \
-		_build/src/coc_runtime.cmx 
+	jbuilder install
 
 uninstall:
-	ocamlfind remove coc
-
+	jbuilder uninstall

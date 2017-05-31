@@ -250,7 +250,7 @@ module Make(Clang : Coc_clang.S) = struct
               [%e Ast_convenience_404.int s] 
               [%e ctype ~ctx t]]
     | TComp{global} -> find global
-    | TEnum{global} -> [%expr [%e find global].ctype]
+    | TEnum{global} -> [%expr [%e find global]#ctype]
     | TFuncPtr{ret;args;variadic} | TFuncProto{ret;args;variadic} -> 
       if variadic then error ~loc:ctx.loc "no support for variadic functions"
       else [%expr [%e evar ctx.attrs.funptr] 
