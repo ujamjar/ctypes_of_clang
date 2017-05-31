@@ -157,3 +157,5 @@ end
 
 module Make(X : Dllib) : S
 
+val version : string
+

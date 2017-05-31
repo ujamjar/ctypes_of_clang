@@ -1,5 +1,6 @@
 open Printf
 open Rresult.R
+open Ctypes_of_clang
 
 module L = Log.Make(struct let section = "top" end)
 
@@ -47,14 +48,15 @@ let x =
   let args = List.rev !clang_args in
   let args = args @ (List.map fst code) in
   let args = if !std_inc then "-I/usr/lib/clang/3.8/include" :: args else args in
-  let builtins = Cparse.[ GBuiltin{name="__builtin_va_list"; typ=TPtr(TVoid)} ] in
+  (*let builtins = Cparse.[ GBuiltin{name="__builtin_va_list"; typ=TPtr(TVoid)} ] in*)
+  let builtins = [] in
   Cparse.run ~log:true ~unsaved:code ~builtins args 
 
 let rec show_type ?(inner=false) = 
   let open Cparse in
   function
   | TVoid -> "void"
-  | TNamed(str) -> str
+  | TNamed(str,_) -> str
   | TPtr(t) -> sprintf "%s*" (show_type ~inner t)
   | TArray(t, size) -> sprintf "%s[%i]" (show_type ~inner t) size
   | TFuncPtr{ret;args;variadic} 

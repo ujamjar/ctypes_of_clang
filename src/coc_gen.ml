@@ -18,12 +18,14 @@ module Make(Clang : Coc_clang.S) = struct
   module Cparse = Coc_parse.Make(Clang)
   open Cparse
 
+  open Migrate_parsetree
+  open OCaml_404.Ast
   open Ast_mapper
   open Ast_helper
   open Asttypes
   open Parsetree
   open Longident
-  open Ast_convenience
+  open Ast_convenience_404
 
   let initial_mangler = Coc_ident.(init ocaml_keywords)
 
@@ -245,7 +247,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TArray(t,s) -> 
       if s = 0 then ctype ~ctx (TPtr(t))
       else [%expr [%e ctypes_evar ctx.attrs "array"] 
-              [%e Ast_convenience.int s] 
+              [%e Ast_convenience_404.int s] 
               [%e ctype ~ctx t]]
     | TComp{global} -> find global
     | TEnum{global} -> [%expr [%e find global].ctype]
@@ -633,7 +635,7 @@ module Make(Clang : Coc_clang.S) = struct
       gentype = genglobal attrs.excludetypes attrs.includetypes;
     }
  
-  let coc_mapper argv = 
+  let coc_mapper = 
 
     { default_mapper with
 
@@ -665,7 +667,9 @@ module Make(Clang : Coc_clang.S) = struct
 
     }
 
-  let register () = register "cfn" coc_mapper
+  let register () = 
+   Driver.register ~name:"ctypes_of_clang" Versions.ocaml_404
+     (fun _config _cookies -> coc_mapper)
 
 end
 

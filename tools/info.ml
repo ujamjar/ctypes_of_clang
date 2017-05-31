@@ -1,5 +1,6 @@
 open Printf
 
+open Ctypes_of_clang
 module Clang = Coc_clang.Make(struct let from = None end)
 module Cinfo = Coc_info.Make(Clang)
 open Cinfo

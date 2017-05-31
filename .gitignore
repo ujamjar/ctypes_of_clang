@@ -1,3 +1,5 @@
 _build
 *.byte
 .*.swp
+.merlin
+*.install

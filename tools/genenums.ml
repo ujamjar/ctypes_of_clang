@@ -2,6 +2,7 @@
    This is used as an early bootstapping process as these enums are then
    used in the library *)
 open Printf
+open Ctypes_of_clang
 
 module Clang = Coc_clang.Make(struct let from = None end)
 module Cinfo = Coc_info.Make(Clang)

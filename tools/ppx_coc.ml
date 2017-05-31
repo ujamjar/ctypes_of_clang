@@ -1,3 +1,5 @@
+open Ctypes_of_clang
+
 module L = Log.Make(struct let section = "ppx" end)
 let () = 
   let f = open_out "coc.log" in

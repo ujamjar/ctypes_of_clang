@@ -1,3 +1,6 @@
+(*external link_to_me : unit -> int = "link_to_me"
+let () = Printf.printf "%i\n" (link_to_me())*)
+
 module type Dllib = sig
   val from : Dl.library option
 end
@@ -525,4 +528,6 @@ module Make(X : Dllib) = struct
       Ok result
 
 end
+
+let version = "3.8"
 

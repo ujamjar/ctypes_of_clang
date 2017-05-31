@@ -1,5 +1,7 @@
 module Make(Clang : Coc_clang.S) : sig 
 
+  open Migrate_parsetree.OCaml_404.Ast
+
   module Cparse : module type of Coc_parse.Make(Clang)
 
   module Attrs : sig

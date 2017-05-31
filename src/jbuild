@@ -1,0 +1,12 @@
+(jbuild_version 1)
+
+(library 
+ ((name ctypes_of_clang)
+  (public_name ctypes-of-clang)
+  (libraries (humane_re dolog 
+              ocaml-migrate-parsetree ppx_tools_versioned
+              ctypes ctypes.foreign))
+  (c_library_flags (-L/usr/lib/llvm-3.8/lib -Wl,--no-as-needed -lclang-3.8))
+  (flags (-linkall))
+  (preprocess (pps (ppx_tools_versioned.metaquot_404)))
+ ))
