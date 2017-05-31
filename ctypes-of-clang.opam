@@ -1,0 +1,21 @@
+opam-version: "1.2"
+maintainer: "andy.ray@ujamjar.com"
+authors: "andy.ray@ujamjar.com"
+homepage: "https://github.com/ujamjar/ctypes_of_clang"
+dev-repo: "https://github.com/ujamjar/ctypes_of_clang"
+bug-reports: "https://github.com/ujamjar/ctypes_of_clang/issues"
+build: [ ["jbuilder" "build" "-p" name "-j" jobs] ]
+depends: [
+  "ocamlfind" {build}
+  "jbuilder" {build & >= "1.0+beta8"}
+  "base-bytes" 
+  "base-unix" 
+  "dolog"
+  "humane-re"
+  "ctypes"
+]
+available: [ ocaml-version >= "4.03.0" ]
+name: "ctypes-of-clang"
+version: "0.1.0"
+license: "ISC"
+
