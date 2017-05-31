@@ -1,5 +1,7 @@
-.PHONY: tools clean all lib tests
+.PHONY: tools clean all lib tests examples
+
 all: lib
+
 tests: foo date ncurses
 
 lib:
@@ -8,14 +10,8 @@ lib:
 tools: 
 	jbuilder build @tools/build-tools
 
-foo: lib
-	ocamlbuild test_foo.byte test_foo.native
-
-date: lib
-	ocamlbuild test_date.byte test_date.native
-
-ncurses: lib
-	ocamlbuild test_ncurses.byte test_ncurses.native
+examples:
+	jbuilder build @examples
 
 # TODO
 #cstdlib:

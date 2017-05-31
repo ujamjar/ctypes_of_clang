@@ -1,5 +1,3 @@
-open Ctypes_of_clang;;
-
 (* types *)
 [%ccode {| #include <time.h> |}
   [@clangargs ["-I/usr/lib/clang/3.8/include"]]

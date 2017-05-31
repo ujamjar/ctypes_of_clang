@@ -232,7 +232,7 @@ module Make(Clang : Coc_clang.S) = struct
       try 
         let n,c = G.find g ctx.global_to_binding in
         let e = types_evar ctx.attrs n in
-        if c then [%expr [%e e].Coc_runtime.ctype] else e
+        if c then [%expr [%e e] # ctype] else e
       with _ -> raise (Global_not_found (name_of_global g))
     in
     match t with
@@ -240,7 +240,7 @@ module Make(Clang : Coc_clang.S) = struct
     | TBase("sint") when ctx.attrs.viewint -> ctypes_evar ctx.attrs "int"
     | TBase("uint") when ctx.attrs.viewint -> ctypes_evar ctx.attrs "int"
     | TBase(t) -> ctypes_evar ctx.attrs t
-    | TNamed(t,c) -> if c then [%expr [%e evar t].Coc_runtime.ctype] else evar t
+    | TNamed(t,c) -> if c then [%expr [%e evar t] # ctype] else evar t
     | TPtr(TBase("char")) when ctx.attrs.viewstring -> ctypes_evar ctx.attrs "string"
     | TPtr(TBase("char")) when ctx.attrs.viewstringopt -> ctypes_evar ctx.attrs "string_opt"
     | TPtr(t) -> [%expr [%e ctypes_evar ctx.attrs "ptr"] [%e ctype ~ctx t]]
@@ -326,8 +326,9 @@ module Make(Clang : Coc_clang.S) = struct
     in
     [%expr
       let to_int, of_int = [%e to_int], [%e of_int] in
-      { Coc_runtime.ctype = [%e ctype ~ctx kind];
-        to_int; of_int }]
+      object method ctype = [%e ctype ~ctx kind];
+             method to_int = to_int; 
+             method of_int = of_int end ]
 
   let gen_cstruct_decl ~ctx binding_name name kind next = 
     let loc, attrs = ctx.loc, ctx.attrs in
@@ -373,7 +374,7 @@ module Make(Clang : Coc_clang.S) = struct
 
     let fields_and_obj = 
       let seal = ctypes_evar attrs "seal" in
-      let e = [%expr { Coc_runtime.ctype=[%e estruct]; members=[%e obj]; } ] in
+      let e = [%expr object method ctype=[%e estruct]; method members=[%e obj]; end ] in
       let e = if members = [] then e else [%expr let () = [%e seal] [%e estruct] in [%e e]] in
       List.fold_right 
         (fun (n,f,_) l -> [%expr let [%p pvar loc n] = [%e f] in [%e l]])
@@ -406,7 +407,7 @@ module Make(Clang : Coc_clang.S) = struct
     in
 
     let fields_and_obj = 
-      let e = [%expr { Coc_runtime.ctype=[%e estruct]; members=[%e obj]; } ] in
+      let e = [%expr object method ctype=[%e estruct]; method members=[%e obj]; end ] in
       let e = 
         if members = [] then e
         else seal e

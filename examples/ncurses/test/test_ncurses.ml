@@ -1,5 +1,4 @@
 open Ctypes
-open Ctypes_of_clang.Coc_runtime
 open Ncursesapi.Ncurses
 
 module Fns = Bindings(Ncursesstubs.Stubs)

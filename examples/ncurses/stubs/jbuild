@@ -13,4 +13,4 @@
 (library 
  ((name ncursesstubs)
   (c_names (cstubs))
-  (libraries (ctypes-of-clang))))
+  (libraries (ctypes.stubs))))

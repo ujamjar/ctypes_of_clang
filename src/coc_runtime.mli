@@ -1,16 +1,3 @@
-type ('a,'b) rt_structured = 
-  {
-    ctype : 'a;
-    members : 'b;
-  }
-
-type ('e,'p) rt_enum = 
-  {
-    ctype : 'e;
-    to_int : 'p -> int64;
-    of_int : int64 -> 'p;
-  }
-
 val field : offset:int -> 't Ctypes.typ -> string -> 'a Ctypes.typ -> 
             ('a, (('s, [<`Struct | `Union]) Ctypes_static.structured as 't)) Ctypes.field
 

@@ -1,5 +1,3 @@
-open Ctypes_of_clang;;
-
 [%ccode 
   {| #include "examples/foo/clib/foo.h" |}
     [@onlytypes][@viewint]]
