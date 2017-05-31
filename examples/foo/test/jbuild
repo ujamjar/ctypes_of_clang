@@ -1,0 +1,8 @@
+(jbuild_version 1)
+
+(executable
+ ((name test_foo)
+  (public_name test_foo3)
+  (ocamlc_flags (-custom))
+  (libraries (fooclib fooapi foostubs ctypes.stubs))))
+

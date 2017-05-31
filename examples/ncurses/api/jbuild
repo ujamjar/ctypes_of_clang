@@ -1,0 +1,5 @@
+(jbuild_version 1)
+
+(library
+ ((name ncursesapi)
+  (preprocess (pps (ctypes-of-clang.ppx)))))

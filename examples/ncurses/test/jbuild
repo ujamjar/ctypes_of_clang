@@ -1,0 +1,8 @@
+(jbuild_version 1)
+
+(executable
+ ((name test_ncurses)
+  (public_name test_ncurses)
+  (ocamlc_flags (-custom))
+  (flags (-cclib -lncurses))
+  (libraries (ncursesapi ncursesstubs ctypes.stubs))))

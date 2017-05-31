@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(library
+ ((name fooapi)
+  (libraries (fooclib))
+  (preprocess (pps (ctypes-of-clang.ppx)))))

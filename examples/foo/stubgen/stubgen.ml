@@ -1,5 +1,5 @@
 let _ =
-  let prefix = "ncurses_cstub" in
+  let prefix = "foo_cstub" in
   let generate_ml, generate_c = ref false, ref false in
   Arg.(parse [ ("-ml", Set generate_ml, "Generate ML");
                 ("-c", Set generate_c, "Generate C") ])
@@ -10,8 +10,8 @@ let _ =
   | true, true ->
     failwith "Exactly one of -ml and -c must be specified"
   | true, false ->
-    Cstubs.write_ml Format.std_formatter ~prefix (module Ncurses.Bindings)
+    Cstubs.write_ml Format.std_formatter ~prefix (module Fooapi.Foo.Bindings)
   | false, true ->
-    print_endline "#include <ncurses.h>";
-    Cstubs.write_c Format.std_formatter ~prefix (module Ncurses.Bindings)
+    print_endline "#include \"../clib/foo.h\"";
+    Cstubs.write_c Format.std_formatter ~prefix (module Fooapi.Foo.Bindings)
 

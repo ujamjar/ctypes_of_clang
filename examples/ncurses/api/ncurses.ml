@@ -1,3 +1,5 @@
+open Ctypes_of_clang;;
+
 (* types *)
 [%ccode 
   {| #include <ncurses.h> |}

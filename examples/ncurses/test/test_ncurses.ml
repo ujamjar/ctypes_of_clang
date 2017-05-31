@@ -1,8 +1,8 @@
 open Ctypes
-open Coc_runtime
-open Ncurses
+open Ctypes_of_clang.Coc_runtime
+open Ncursesapi.Ncurses
 
-module Fns = Bindings(Ncurses_stubs)
+module Fns = Bindings(Ncursesstubs.Stubs)
 open Fns
 
 let ul = Unsigned.ULong.of_int
