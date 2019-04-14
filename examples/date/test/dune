@@ -1,0 +1,5 @@
+(executable
+ (name test_date)
+ (ocamlc_flags -custom)
+ (flags -cclib -lrt)
+ (libraries dateapi datestubs ctypes.stubs))

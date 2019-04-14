@@ -1,0 +1,11 @@
+(rule
+ (deps foo.h cfoo.c)
+ (targets cfoox.c)
+ (action
+  (copy cfoo.c cfoox.c)))
+
+(library
+ (name fooclib)
+ (c_names cfoox))
+
+;;(install_c_headers (foo))))

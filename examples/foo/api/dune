@@ -1,0 +1,5 @@
+(library
+ (name fooapi)
+ (libraries fooclib)
+ (preprocess
+  (pps ctypes-of-clang.ppx)))

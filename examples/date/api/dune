@@ -1,0 +1,4 @@
+(library
+ (name dateapi)
+ (preprocess
+  (pps ctypes-of-clang.ppx)))

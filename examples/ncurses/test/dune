@@ -1,0 +1,5 @@
+(executable
+ (name test_ncurses)
+ (ocamlc_flags -custom)
+ (flags -cclib -lncurses)
+ (libraries ncursesapi ncursesstubs ctypes.stubs))

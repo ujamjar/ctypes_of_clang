@@ -1,0 +1,22 @@
+(rule
+ (deps
+  (:< ../stubgen/stubgen.exe))
+ (targets cstubs.c)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run %{<} -c))))
+
+(rule
+ (deps
+  (:< ../stubgen/stubgen.exe))
+ (targets stubs.ml)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run %{<} -ml))))
+
+(library
+ (name ncursesstubs)
+ (c_names cstubs)
+ (libraries ctypes.stubs))

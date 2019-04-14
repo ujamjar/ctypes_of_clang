@@ -1,5 +1,0 @@
-(jbuild_version 1)
-
-(executable
- ((name stubgen)
-  (libraries (dateapi ctypes.stubs))))

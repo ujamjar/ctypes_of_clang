@@ -1,0 +1,4 @@
+(executable
+ (name test_foo)
+ (ocamlc_flags -custom)
+ (libraries fooclib fooapi foostubs ctypes.stubs))

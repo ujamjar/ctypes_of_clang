@@ -1,0 +1,34 @@
+(library
+ (name ppx_coc)
+ (public_name ctypes-of-clang.ppx)
+ (synopsis "ctypes-of-clang syntax extension")
+ (ocamlc_flags -custom)
+ (modules ppx_coc)
+ (libraries ctypes-of-clang compiler-libs.common ocaml-migrate-parsetree
+   ppx_tools_versioned)
+ (ppx_runtime_libraries ctypes-of-clang)
+ (kind ppx_rewriter))
+
+;; example linking with the library
+
+(executable
+ (name info)
+ (ocamlc_flags -custom)
+ (modules info)
+ (libraries ctypes-of-clang rresult))
+
+(executable
+ (name genenums)
+ (ocamlc_flags -custom)
+ (modules genenums)
+ (libraries ctypes-of-clang rresult))
+
+(executable
+ (name extract)
+ (ocamlc_flags -custom)
+ (modules extract)
+ (libraries ctypes-of-clang rresult))
+
+(alias
+ (name build-tools)
+ (deps info.exe genenums.exe extract.exe))
