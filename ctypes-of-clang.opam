@@ -1,11 +1,16 @@
-opam-version: "1.2"
+name: "ctypes-of-clang"
+version: "0.1.0"
+license: "ISC"
+opam-version: "2.0"
 maintainer: "andy.ray@ujamjar.com"
 authors: "andy.ray@ujamjar.com"
 homepage: "https://github.com/ujamjar/ctypes_of_clang"
-dev-repo: "https://github.com/ujamjar/ctypes_of_clang"
+dev-repo: "git://github.com/ujamjar/ctypes_of_clang"
+synopsis: "Convert C-code headers to Ctypes with clang"
 bug-reports: "https://github.com/ujamjar/ctypes_of_clang/issues"
 build: [ ["dune" "build" "-p" name "-j" jobs] ]
 depends: [
+  "ocaml" {>= "4.03.0"}
   "ocamlfind" {build}
   "dune" {build & >= "1.0"}
   "base-bytes" 
@@ -13,9 +18,8 @@ depends: [
   "dolog"
   "humane-re"
   "ctypes"
+  "ctypes-foreign"
+  "ocaml-migrate-parsetree"
+  "ppx_tools_versioned"	
 ]
-available: [ ocaml-version >= "4.03.0" ]
-name: "ctypes-of-clang"
-version: "0.1.0"
-license: "ISC"
 
